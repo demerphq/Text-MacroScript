@@ -1,7 +1,8 @@
 Revision history for Perl module Text::MacroScript
 
-2.07    2015-05-??
-    Other
+2.07	2015-05-16
+
+    Other (contributed by Neil Bowers)
     * Added the github repo to the dist metadata
     * Added the min perl version (5.010) in the dist metadata
     * Added the license as LGPL (GNU Lesser General Public License, Version 2.1)
@@ -11,7 +12,8 @@ Revision history for Perl module Text::MacroScript
 
 	Bug Fixes
 	* Fix #43: expand_file() dies with double indication of file name
-	* Fix #47: %UNDEFINE[|_VARIABLE|_SCRIPT] within %DEFINE[|_SCRIPT] not detected as runaway %DEFINE[|_SCRIPT]
+	* Fix #47: %UNDEFINE[|_VARIABLE|_SCRIPT] within %DEFINE[|_SCRIPT] not 
+	  detected as runaway %DEFINE[|_SCRIPT]
 
 	Feature Changes
 	* expand and expand_embedded now get the line number as argument
@@ -33,9 +35,12 @@ Revision history for Perl module Text::MacroScript
 	* Fix #24: macroutil.pl is an example but is installed at Text::macroutil.pl
 
 	New Features
-	* New methods define_script(), list_script(), undefine_script(), undefine_all_script()
-	* New methods define_macro(), list_macro(), undefine_macro(), undefine_all_macro()
-	* New methods define_variable(), list_variable(), undefine_variable(), undefine_all_variable()
+	* New methods define_script(), list_script(), undefine_script(), 
+	  undefine_all_script()
+	* New methods define_macro(), list_macro(), undefine_macro(), 
+	  undefine_all_macro()
+	* New methods define_variable(), list_variable(), undefine_variable(), 
+	  undefine_all_variable()
 
 	Feature Changes
 	* Require minimum perl 5.10 for extended regular expressions
@@ -44,10 +49,14 @@ Revision history for Perl module Text::MacroScript
 
 	Other
 	* Use Object::Tiny::RW to create object and access attributes
-	* Add test for Issue #37: Variables should be expanded in all input text
-	* Use YEAR, MONTH to make sure issue #18 is still OK (output order of list() not predictable)
-	* Add commented tests for bug #23: macropp: report errors on syntax error
-	* In test scripts: output a message when test code is commented out due to open issue
+	* Add test for Issue #37: Variables should be expanded in all input 
+	  text
+	* Use YEAR, MONTH to make sure issue #18 is still OK (output order of 
+	  list() not predictable)
+	* Add commented tests for bug #23: macropp: report errors on syntax 
+	  error
+	* In test scripts: output a message when test code is commented out 
+	  due to open issue
 	* Test scripts
 	* Moved all TODO actions to issues in GitHub
 
@@ -70,7 +79,8 @@ Revision history for Perl module Text::MacroScript
 	* #12: use Path::Tiny instead of Cwd
 	* #14: Remove dead code from macrodir.t
 	* #15: macrodir expanding files in a different order. 
-	* #13: here documents in test scripts may include "\r\n" which fail eq to "\n"
+	* #13: here documents in test scripts may include "\r\n" which 
+	  fail eq to "\n"
 
 	Other
 	* Use strict and warnings in all files, require perl 5.8

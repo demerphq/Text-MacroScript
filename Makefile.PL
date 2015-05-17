@@ -26,7 +26,6 @@ WriteMakefile(
     'DEFINE'       => '',     # e.g., '-DHAVE_SOMETHING'
     'INC'          => '',     # e.g., '-I/usr/include/other'
 	'PREREQ_PM'	   => {
-		'Image::Size' => 3.3,
 		'Path::Tiny' => 0.068,
 		'Capture::Tiny' => 0.22,
 		'Test::Differences' => 0.61,

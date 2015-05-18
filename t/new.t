@@ -27,7 +27,7 @@ END
 #------------------------------------------------------------------------------
 # new()
 eval { Text::MacroScript->new(-no=>0,-such=>0,-option=>0); }; 
-check_error(__LINE__-1, $@, "Invalid options -such,-no,-option __LOC__.\n");
+check_error(__LINE__-1, $@, "Invalid options -no,-option,-such __LOC__.\n");
 
 #------------------------------------------------------------------------------
 # -file

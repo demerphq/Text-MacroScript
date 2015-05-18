@@ -185,7 +185,7 @@ sub new { # Class and object method
 		delete $opts{$which};
 	}
 	
-	croak "Invalid options ".join(",", keys %opts) if %opts;
+	croak "Invalid options ".join(",", sort keys %opts) if %opts;
 		
     $self;
 }

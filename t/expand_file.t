@@ -40,7 +40,8 @@ path("testdir~")->remove_tree;
 
 #------------------------------------------------------------------------------
 # open file in ~
-diag 'Issue 56: CPAN Tests FAIL Text-MacroScript-2.07 v5.10.1 Windows (Win32)';
+diag 'Issue #54: CPAN Testers FAIL Text-MacroScript-2.07 v5.14.4 Windows (Cygwin)';
+diag 'Issue #56: CPAN Tests FAIL Text-MacroScript-2.07 v5.10.1 Windows (Win32)';
 #for my $file ("~/testmacroscript.tmp~", "testmacroscript.tmp~") {
 #	$ms = new_ok('Text::MacroScript');
 #	t_spew($file, "hello\nworld\n");

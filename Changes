@@ -1,5 +1,19 @@
 Revision history for Perl module Text::MacroScript
 
+2.08	2015-05-18
+
+	Bug Fixes
+	* Fix #52: [rt.cpan.org #104483] Image::Size prerequisite
+	* Fix #53: [rt.cpan.org #104482] Wrong git repository URL
+	* Fix #55: CPAN Tests FAIL Text-MacroScript-2.07 v5.10.0 GNU/Linux
+	* Fix #57: CPAN Tests FAIL Text-MacroScript-2.07 v5.18.2 Windows (Win32)
+	* Fix #58: CPAN Tests FAIL Text-MacroScript-2.07 v5.12.2 NetBSD
+
+	Other
+	* Comment test to skip issue Issue #56: CPAN Tests FAIL Text-MacroScript-2.07 v5.10.1 Windows (Win32)
+	* Issues #54, #56: result of the same error of opening files started with '~' in Windows
+	* Uniform open file error messages
+
 2.07	2015-05-16
 
     Other (contributed by Neil Bowers)

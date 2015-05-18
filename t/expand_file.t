@@ -22,14 +22,6 @@ my $fh;
 my($out,$err,@res);
 
 #------------------------------------------------------------------------------
-# capture $! for file not found and permission denied
-ok ! open($fh, "NOFILE");
-my $file_not_found = $!;
-
-ok ! open($fh, ".");
-my $permission_denied = $!;
-
-#------------------------------------------------------------------------------
 # create object
 $ms = new_ok('Text::MacroScript');
 
@@ -43,7 +35,7 @@ check_error(__LINE__-1, $@, "File 'NOFILE' does not exist __LOC__.\n");
 
 path("testdir~")->mkpath;
 eval { $ms->expand_file("testdir~"); };
-check_error(__LINE__-1, $@, "Open 'testdir~' failed: $permission_denied __LOC__.\n");
+check_error(__LINE__-1, $@, "Open 'testdir~' failed: OS error __LOC__.\n");
 path("testdir~")->remove_tree;
 
 #------------------------------------------------------------------------------

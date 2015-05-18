@@ -7,28 +7,37 @@ use strict;
 use warnings;
 
 # normalize output and expected strings before eq test
+sub _normalize_expected {
+	my($text, $line_nr) = @_;
+	$text =~ s/__LOC__/at $0 line $line_nr/g;
+	return $text;
+}
+
 sub _normalize_output {
+	local($_) = @_;
 	s/\\/\//g;
 	s/\.$//gm;		# remove end "." from eval error message as it differs in perl versions
 	s/\S+(Text\/MacroScript\.pm line) \d+/$1 99/g;
+	s/(Open .*? failed:) .*? (at)/$1 ERROR $2/g;
+	return $_;
 }
 
 #------------------------------------------------------------------------------
 # check $@ for the given error message, replace __LOC__ by the 
 # standard "at 'FILE' line DDD", normalize slashes for pathnames
 sub check_error {
-	my($line_nr, $eval, $expected) = @_;
+	my($line_nr, $eval, $exp_err) = @_;
 	my $where = "at line $line_nr";
 	
 	ok defined($eval), "error defined $where";
 	$eval //= "";
 	
-	$expected =~ s/__LOC__/at $0 line $line_nr/g;
-	for ($eval, $expected) {
-		_normalize_output();
+	$exp_err = _normalize_expected($exp_err, $line_nr);
+	for ($eval, $exp_err) {
+		$_ = _normalize_output($_);
 	}
 	
-	eq_or_diff $eval, $expected, "error ok $where";
+	eq_or_diff $eval, $exp_err, "error ok $where";
 }
 
 #------------------------------------------------------------------------------
@@ -49,9 +58,9 @@ sub t_capture {
 	
 	my($out,$err,$ret) = capture { $sub->() };
 
-	$exp_err =~ s/__LOC__/at $0 line $line_nr/g;
+	$exp_err = _normalize_expected($exp_err, $line_nr);
 	for ($err, $exp_err) {
-		_normalize_output();
+		$_ = _normalize_output($_);
 	}
 	
 	eq_or_diff $out, $exp_out, "check stdout $where";

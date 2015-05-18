@@ -68,7 +68,7 @@ sub wanted {
             }
             my $fh = gensym ;
             open  $fh, ">$newfile" or 
-            die "Failed to open $newfile: $!\n" ;
+            die "Open '$newfile' failed: $!\n" ;
             print $fh $Macro->expand_file( $file ) ;
             close $fh ;
         } ;

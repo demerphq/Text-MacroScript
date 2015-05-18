@@ -6,6 +6,13 @@
 use strict;
 use warnings;
 
+# normalize output and expected strings before eq test
+sub _normalize_output {
+	s/\\/\//g;
+	s/\.$//gm;		# remove end "." from eval error message as it differs in perl versions
+	s/\S+(Text\/MacroScript\.pm line) \d+/$1 99/g;
+}
+
 #------------------------------------------------------------------------------
 # check $@ for the given error message, replace __LOC__ by the 
 # standard "at 'FILE' line DDD", normalize slashes for pathnames
@@ -18,7 +25,7 @@ sub check_error {
 	
 	$expected =~ s/__LOC__/at $0 line $line_nr/g;
 	for ($eval, $expected) {
-		s/\\/\//g;
+		_normalize_output();
 	}
 	
 	eq_or_diff $eval, $expected, "error ok $where";
@@ -44,8 +51,7 @@ sub t_capture {
 
 	$exp_err =~ s/__LOC__/at $0 line $line_nr/g;
 	for ($err, $exp_err) {
-		s/\\/\//g;
-		s/\S+(Text\/MacroScript\.pm line) \d+/$1 99/g;
+		_normalize_output();
 	}
 	
 	eq_or_diff $out, $exp_out, "check stdout $where";

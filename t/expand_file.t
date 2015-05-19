@@ -20,6 +20,7 @@ sub void(&) { $_[0]->(); () }
 my $ms;
 my $fh;
 my($out,$err,@res);
+my $file = "testmacroscript.tmp~";
 
 #------------------------------------------------------------------------------
 # create object
@@ -30,14 +31,9 @@ $ms = new_ok('Text::MacroScript');
 eval { $ms->expand_file; };
 check_error(__LINE__-1, $@, "Missing filename __LOC__.\n");
 
-eval { $ms->expand_file("NOFILE"); };
-check_error(__LINE__-1, $@, "File 'NOFILE' does not exist __LOC__.\n");
-
-diag 'Issue #59: CPAN Tests FAIL Text-MacroScript-2.08 v5.10.1 GNU/Linux';
-#path("testdir~")->mkpath;
-#eval { $ms->expand_file("testdir~"); };
-#check_error(__LINE__-1, $@, "Open 'testdir~' failed: OS error __LOC__.\n");
-#path("testdir~")->remove_tree;
+unlink $file;
+eval { $ms->expand_file($file); };
+check_error(__LINE__-1, $@, "Open '$file' failed: OS error __LOC__.\n");
 
 #------------------------------------------------------------------------------
 # open file in ~

@@ -1,3 +1,8 @@
+2.09	2015-05-19
+
+	Other
+	* Comment test to skip issue Issue #59: reading a directory as a file succeeds in some OS's
+
 Revision history for Perl module Text::MacroScript
 
 2.08	2015-05-18

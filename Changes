@@ -1,9 +1,18 @@
+Revision history for Perl module Text::MacroScript
+
+2.09_01	2015-05-19
+
+	Bug Fixes
+	* Fix #44, #54, #56: expand_file(): tilde (~) for home directory does not work in windows
+	* Fix #59: CPAN Tests FAIL Text-MacroScript-2.08 v5.10.1 GNU/Linux
+
+	Feature Changes
+	* expand_file(): Remove special error message when file does not exist
+
 2.09	2015-05-19
 
 	Other
 	* Comment test to skip issue Issue #59: reading a directory as a file succeeds in some OS's
-
-Revision history for Perl module Text::MacroScript
 
 2.08	2015-05-18
 

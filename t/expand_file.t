@@ -37,34 +37,32 @@ check_error(__LINE__-1, $@, "Open '$file' failed: OS error __LOC__.\n");
 
 #------------------------------------------------------------------------------
 # open file in ~
-diag 'Issue #54: CPAN Testers FAIL Text-MacroScript-2.07 v5.14.4 Windows (Cygwin)';
-diag 'Issue #56: CPAN Tests FAIL Text-MacroScript-2.07 v5.10.1 Windows (Win32)';
-#for my $file ("~/testmacroscript.tmp~", "testmacroscript.tmp~") {
-#	$ms = new_ok('Text::MacroScript');
-#	t_spew($file, "hello\nworld\n");
-#	if ($file =~ /^~/) {
-#		diag "Issue #44: expand_file(): tilde (~) for home directory does not work in windows";
-#		next;
-#	}
-#	@res = $ms->expand_file($file);
-#	is_deeply \@res, [
-#		"hello\n",
-#		"world\n",
-#	];
-#
-#	($out,$err,@res) = capture { void { $ms->expand_file($file); } };
-#	is $out, 
-#		"hello\n".
-#		"world\n";
-#	is $err, "";
-#
-#	path($file)->remove;
-#}
+diag 'Testing Issue #54: CPAN Testers FAIL Text-MacroScript-2.07 v5.14.4 Windows (Cygwin)';
+diag 'Testing Issue #56: CPAN Tests FAIL Text-MacroScript-2.07 v5.10.1 Windows (Win32)';
+for my $file ("~/$file", "$file") {
+	$ms = new_ok('Text::MacroScript');
+	t_spew($file, "hello\nworld\n");
+	if ($file =~ /^~/) {
+		diag "Testing Issue #44: expand_file(): tilde (~) for home directory does not work in windows";
+		#next;
+	}
+	@res = $ms->expand_file($file);
+	is_deeply \@res, [
+		"hello\n",
+		"world\n",
+	];
+
+	($out,$err,@res) = capture { void { $ms->expand_file($file); } };
+	is $out, 
+		"hello\n".
+		"world\n";
+	is $err, "";
+
+	path($file)->remove;
+}
 
 #------------------------------------------------------------------------------
 # error messages: unclosed %DEFINE
-my $file = "testmacroscript.tmp~";
-
 t_spew($file, "\n\n%DEFINE xx\nyy\nzz\n");
 $ms = new_ok('Text::MacroScript');
 eval { @res = $ms->expand_file($file); };

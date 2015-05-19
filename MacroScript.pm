@@ -423,8 +423,8 @@ sub expand_file { # Object method.
 
 	croak "Missing filename"            unless     $file; 
 	
-	substr( $file, 0, 1 ) = ( $ENV{HOME} or $ENV{LOGDIR} or (getpwuid( $> ))[7] ) 
-	if substr( $file, 0, 1 ) eq '~';
+	# let Path::Tiny handle '~' processing
+	$file = path($file);
 	
 	local $_;
 

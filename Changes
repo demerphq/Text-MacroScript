@@ -1,5 +1,10 @@
 Revision history for Perl module Text::MacroScript
 
+2.09_02	2015-05-20
+
+	Bug Fixes
+	* Fix #60: new.t depends on example script that requires Image::Size
+
 2.09_01	2015-05-19
 
 	Bug Fixes

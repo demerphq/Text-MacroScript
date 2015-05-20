@@ -1,15 +1,16 @@
-Revision history for Perl module Text::MacroScript
-
 2.09_02	2015-05-20
 
 	Bug Fixes
-	* Fix #60: new.t depends on example script that requires Image::Size
+	* Fix #60: CPAN test failed: new.t depends on example script that 
+	  requires Image::Size
 
 2.09_01	2015-05-19
 
 	Bug Fixes
-	* Fix #44, #54, #56: expand_file(): tilde (~) for home directory does not work in windows
-	* Fix #59: CPAN Tests FAIL Text-MacroScript-2.08 v5.10.1 GNU/Linux
+	* Fix #44, #54, #56: CPAN test failed: expand_file(): tilde (~) for 
+	  home directory does not work in windows
+	* Fix #59: CPAN test failed: In some OSs a file open on a directory 
+	  does not fail
 
 	Feature Changes
 	* expand_file(): Remove special error message when file does not exist
@@ -17,16 +18,19 @@ Revision history for Perl module Text::MacroScript
 2.09	2015-05-19
 
 	Other
-	* Comment test to skip issue Issue #59: reading a directory as a file succeeds in some OS's
+	* Comment test to skip issue Issue #59: reading a directory as a file 
+	  succeeds in some OS's
 
 2.08	2015-05-18
 
 	Bug Fixes
 	* Fix #52: [rt.cpan.org #104483] Image::Size prerequisite
 	* Fix #53: [rt.cpan.org #104482] Wrong git repository URL
-	* Fix #55: CPAN Tests FAIL Text-MacroScript-2.07 v5.10.0 GNU/Linux
-	* Fix #57: CPAN Tests FAIL Text-MacroScript-2.07 v5.18.2 Windows (Win32)
-	* Fix #58: CPAN Tests FAIL Text-MacroScript-2.07 v5.12.2 NetBSD
+	* Fix #55: CPAN test failed: open() failure: $! outputs an OS-dependent 
+	  string
+	* Fix #57: CPAN test failed: Different perl versions output the keys 
+	  of an hash in a different order
+	* Fix #58: CPAN test failed: output of eval error depends on Perl version
 
 	Other
 	* Comment test to skip issue Issue #56: CPAN Tests FAIL Text-MacroScript-2.07 v5.10.1 Windows (Win32)

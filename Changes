@@ -1,3 +1,8 @@
+2.09_03	2015-05-21
+
+	Bug Fixes
+	* Fix #53: [rt.cpan.org #104482] Wrong git repository URL
+
 2.09_02	2015-05-20
 
 	Bug Fixes
@@ -25,7 +30,6 @@
 
 	Bug Fixes
 	* Fix #52: [rt.cpan.org #104483] Image::Size prerequisite
-	* Fix #53: [rt.cpan.org #104482] Wrong git repository URL
 	* Fix #55: CPAN test failed: open() failure: $! outputs an OS-dependent 
 	  string
 	* Fix #57: CPAN test failed: Different perl versions output the keys 

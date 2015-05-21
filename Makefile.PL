@@ -51,8 +51,8 @@ WriteMakefile(
             resources => {
                 repository  => {
                     type => 'git',
+                    url  => 'git://github.com/pauloscustodio/Text-MacroScript.git',
                     web  => 'https://github.com/pauloscustodio/Text-MacroScript',
-                    url  => 'https://github.com/pauloscustodio/Text-MacroScript/issues',
                 },
             },
           })

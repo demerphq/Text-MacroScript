@@ -37,15 +37,9 @@ check_error(__LINE__-1, $@, "Open '$file' failed: OS error __LOC__.\n");
 
 #------------------------------------------------------------------------------
 # open file in ~
-diag 'Testing Issue #54: CPAN Testers FAIL Text-MacroScript-2.07 v5.14.4 Windows (Cygwin)';
-diag 'Testing Issue #56: CPAN Tests FAIL Text-MacroScript-2.07 v5.10.1 Windows (Win32)';
 for my $file ("~/$file", "$file") {
 	$ms = new_ok('Text::MacroScript');
 	t_spew($file, "hello\nworld\n");
-	if ($file =~ /^~/) {
-		diag "Testing Issue #44: expand_file(): tilde (~) for home directory does not work in windows";
-		#next;
-	}
 	@res = $ms->expand_file($file);
 	is_deeply \@res, [
 		"hello\n",

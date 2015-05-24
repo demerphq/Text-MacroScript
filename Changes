@@ -1,3 +1,12 @@
+2.09_04	2015-05-24
+
+	Bug Fixes
+	* Fix #61: in some test platforms tests cannot write in the user's 
+	  home directory
+
+	Other
+	* Removed diagnostic messages for #44, #54 and #56
+
 2.09_03	2015-05-21
 
 	Bug Fixes

@@ -37,9 +37,17 @@ check_error(__LINE__-1, $@, "Open '$file' failed: OS error __LOC__.\n");
 
 #------------------------------------------------------------------------------
 # open file in ~
+if (! -d path("~")) {
+	diag "directory '~' not found";
+}
+else {
 for my $file ("~/$file", "$file") {
 	$ms = new_ok('Text::MacroScript');
 	t_spew($file, "hello\nworld\n");
+		if (! -f $file) {
+			diag "file '$file' not found";
+		}
+		else {
 	@res = $ms->expand_file($file);
 	is_deeply \@res, [
 		"hello\n",
@@ -53,6 +61,8 @@ for my $file ("~/$file", "$file") {
 	is $err, "";
 
 	path($file)->remove;
+		}
+	}
 }
 
 #------------------------------------------------------------------------------

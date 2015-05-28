@@ -19,7 +19,7 @@ WriteMakefile(
     'DISTNAME'     => 'Text-MacroScript',
     ($] >= 5.005 ?
         (
-            ABSTRACT_FROM => 'Text-MacroScript', 
+            ABSTRACT_FROM => 'MacroScript.pm', 
             AUTHOR   => 'Mark Summerfield <summer@perlpress.com>',
         ) : () ),
 	'PREREQ_PM'	   => {

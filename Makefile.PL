@@ -23,6 +23,7 @@ WriteMakefile(
             AUTHOR   => 'Mark Summerfield <summer@perlpress.com>',
         ) : () ),
 	'PREREQ_PM'	   => {
+		'enum'				=> 1.10,
 		'Path::Tiny'		=> 0.068,
 		'Capture::Tiny'		=> 0.22,
 		'Test::Differences'	=> 0.61,

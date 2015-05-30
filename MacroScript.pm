@@ -6,16 +6,456 @@ use strict;
 use warnings;
 
 use Carp qw( carp croak );
+our @CARP_NOT = ( __PACKAGE__ );
 use Path::Tiny;
 
-use vars qw( $VERSION );
-$VERSION = '2.10'; 
+use vars qw( $VERSION $WS_RE $NAME_RE );
+$VERSION 	= '2.10_01'; 
+$WS_RE 		= qr/ [\t\f\r ] /x;
+$NAME_RE 	= qr/ [^\s\[\|\]\#\%]+ /x;		# name cannot contain blanks [ | ] # %
 
+#------------------------------------------------------------------------------
+# object to hold current input stack for nested structs
+use enum qw( CTX_ARGS=1 );
+{
+	package # hide this from CPAN
+		Text::MacroScript::Context;
+	
+	use Object::Tiny::RW
+		'type',					# type of struct to match, one of CTX_...
+		'start_line_nr',		# line number where struct started
+		'commit_func',			# function to call when struct ends
+
+		# collecting parameters
+		'args',					# current collected arguments
+		'open_parens',			# number of open parenthesis
+		
+		# collecting definitions
+		'text',					# current collected text
+	;
+	
+	sub new {
+		my($class, $type, $start_line_nr, $commit_func) = @_;
+
+		my $self = $class->SUPER::new(
+			type			=> $type,
+			start_line_nr	=> $start_line_nr,
+			commit_func		=> $commit_func,
+			
+			args 			=> [''],
+			open_parens		=> 1,		# init at 1, as first '[' is already matched
+			text			=> '',
+		);
+		return $self;
+	}	
+}
+
+#------------------------------------------------------------------------------
+# main object
 use Object::Tiny::RW 
+	'parse_func',				# current parsing function
+	
+	'file',						# current input file name for error messages
+	'line_nr',					# current line number
+	
+	'context',					# stack of Text::MacroScript::Context, empty if none
+	'actions',					# hash of text -> func($self, $match, $next) to call if matched
+	'variables',				# hash of variable name -> current value
+	'regexp',					# big regexp computed each time text_action changes
+
+	'embedded',					# true if parsing embedded text
+	'in_embedded',				# true if inside embedded delimiters
+	'opendelim',				# open delimiter for embedded processing
+	'closedelim',				# close delimiter for embedded processing
+	;
+
+#------------------------------------------------------------------------------
+# new
+sub new {
+    my($class, %opts) = @_;
+	
+	my $self = $class->SUPER::new(
+		parse_func	=> \&_parse_execute,
+		file	 	=> '-',
+		line_nr		=> 1,
+		
+		context		=> [],
+		actions		=> {},
+		variables 	=> {},
+		regexp		=> qr//,
+		
+		embedded	=> 0,
+		in_embedded	=> 0,
+		opendelim	=> '<:',
+		closedelim	=> ':>',
+	);
+	
+	# parse options: -embedded
+	if ($opts{-embedded} || defined($opts{-opendelim})) {
+		$self->embedded(1);
+		$self->opendelim($opts{-opendelim} // "<:");
+		$self->closedelim($opts{-closedelim} // $opts{-opendelim} // ":>");
+	}
+	delete @opts{qw( -embedded -opendelim -closedelim)};
+
+	# check for invalid options
+	croak "Invalid options ".join(",", sort keys %opts) if %opts;
+		
+	
+	$self->_update_regexp;
+	return $self;
+}
+
+#------------------------------------------------------------------------------
+# error
+sub _error {
+	my($self, $message) = @_;
+	chomp($message);
+	die "Error at file ", $self->file, " line ", $self->line_nr, ": ", $message, "\n";
+}
+
+#------------------------------------------------------------------------------
+# contexts
+sub _push_context {
+	my($self, $type, $commit_func) = @_;
+	
+	my $previous_parse = $self->parse_func;
+	my $context = Text::MacroScript::Context->new($type, $self->line_nr, 
+				sub {
+					# pop context
+					my $context = $self->_last_context_assert($type);
+					my @args = @{$context->args};
+					$self->_pop_context;
+					
+					# reset parser - it will be used when defining the variable
+					$self->parse_func( $previous_parse );
+					
+					# call commit function with input arguments
+					$commit_func->(@args);
+				});
+	push @{$self->context}, $context;
+}
+
+sub _last_context {
+	my($self) = @_;
+	$self->_error("Unbalanced close structure") unless @{$self->context};
+	return $self->context->[-1];
+}
+
+sub _last_context_assert {
+	my($self, $type) = @_;
+	my $context = $self->_last_context();
+	$self->_error("Unbalanced close structure") unless $type == $context->type;
+	return $context;
+}
+
+sub _pop_context {
+	my($self) = @_;
+	$self->_last_context();
+	pop @{$self->context};
+}
+
+#------------------------------------------------------------------------------
+# Destroy object, syntax error if input not complete - e.g. missing close struct
+DESTROY {
+	my($self) = @_;
+	if (@{$self->context}) {
+		my $context = $self->_last_context;
+		$self->line_nr( $context->start_line_nr );
+		$self->_error("Unbalanced open structure at end of file");
+	}
+}
+
+#------------------------------------------------------------------------------
+# create the parsing regexp
+sub _update_regexp {
+	my($self) = @_;
+	my @actions_re;
+	
+	use re 'eval';
+
+	# escape chars
+	push @actions_re, qr/ (?> \\ ( [\#\%] ) 	(?{ \&_match_escape }) ) /mx;
+	
+	# escape newline
+	push @actions_re, qr/ (?> \\ \n				(?{ \&_match_escape_newline }) ) /mx;
+	
+	# %DEFINE_VARIABLE
+	push @actions_re, qr/ (?> ^ $WS_RE* \% DEFINE_VARIABLE
+												(?{ \&_match_define_variable }) ) /mx;
+
+	# concatenate operator
+	push @actions_re, qr/ (?> $WS_RE* \# \# $WS_RE*
+												(?{ \&_match_concat }) ) /mx;
+	
+	# user actions reverse sorted by length, so that longest match is found
+	my $actions = $self->actions;
+	for my $key (sort {length $b <=> length $a} keys %$actions)  {
+		push @actions_re, qr{ (?> \Q$key\E (?{ \&_match_action }) ) }mx;
+	}
+	
+	my $regexps = join(' | ', @actions_re);
+	my $regexp = qr/ (?| $regexps )/mx;
+	
+	$self->regexp($regexp);
+}
+
+#------------------------------------------------------------------------------
+# match functions: called with matched text and following text; return new
+# following text
+sub _match_escape {
+	my($self, $output_ref, $match, $input) = @_;
+	$$output_ref .= $1;			# special char is no longer parsed
+	return $input;
+}
+
+sub _match_escape_newline {
+	my($self, $output_ref, $match, $input) = @_;
+	$$output_ref .= ' ';
+	return $input;
+}
+
+sub _match_concat {
+	my($self, $output_ref, $match, $input) = @_;
+	return $input;
+}
+
+sub _match_define_variable {
+	my($self, $output_ref, $match, $input) = @_;
+	
+	$input =~ / $WS_RE* ( $NAME_RE ) $WS_RE* \[ /x 
+		or $self->_error("Expected NAME [EXPR]");
+	my $name = $1;
+	$input = $';
+	
+	# create a new context
+	$self->_push_context(CTX_ARGS, 
+			sub {
+				my(@args) = @_;
+				@args == 1 or $self->_error("Only one argument expected");
+				$self->define_variable($name, $args[0]);
+			});
+	
+	# change parser
+	$self->parse_func( \&_parse_args );
+	
+	return $input;
+}
+
+sub _match_action {
+	my($self, $output_ref, $match, $input) = @_;
+
+	my $func = $self->actions->{$match} 
+		or $self->error("No action found for '$match'");
+	return $func->($self, $output_ref, $match, $input);
+}
+	
+#------------------------------------------------------------------------------
+# match engine - recurse to expand all macros, return expanded text
+sub _expand {
+	my($self, $input) = @_;
+	$input //= '';
+	my $output = '';
+
+	while ($input ne '') {
+		$input = $self->parse_func->($self, \$output, $input);
+	}
+	return $output;
+}
+
+# expand embedded text
+sub _expand_embedded {
+	my($self, $input) = @_;
+	$input //= '';
+	my $output = '';
+
+	while ($input ne '') {
+		if ($self->in_embedded) {
+			my $closedelim = $self->closedelim;
+			if ($input =~ /\Q$closedelim\E/) {
+				$input = $';
+				$output .= $self->_expand($`);
+				$self->in_embedded(0);
+			}
+			else {
+				$output .= $self->_expand($input);
+				$input = '';
+			}
+		}
+		else {
+			my $opendelim = $self->opendelim;
+			if ($input =~ /\Q$opendelim\E/) {
+				$output .= $`;
+				$input = $';
+				$self->in_embedded(1);
+			}
+			else {
+				$output .= $input;
+				$input = '';
+			}
+		}
+	}
+	return $output;
+}
+
+#------------------------------------------------------------------------------
+# choose either _expand or _expand_embedded
+sub expand {
+	my($self, $text, $file, $line_nr) = @_;
+    defined($file) and $self->file($file);
+    $line_nr       and $self->line_nr($line_nr);
+
+	if ($self->embedded) {
+		return $self->_expand_embedded($text);
+	}
+	else {
+		return $self->_expand($text);
+	}
+}
+
+
+
+# parse functions: execute macros
+# input: text to parse and current output; 
+# output: remaining text to parse and total text to output 
+sub _parse_execute {
+	my($self, $output_ref, $input) = @_;
+	
+	if ($input =~ / $self->{regexp} /x) {
+		my $action = $^R;
+		
+		# execute action and set new input
+		$$output_ref .= $`;
+		$input = $self->$action($output_ref, $&, $');	
+	}
+	else {
+		$$output_ref .= $input;					# remaining input
+		$input = '';
+	}
+	
+	return $input;
+}
+
+# parse functions: collect macro arguments
+sub _parse_args {
+	my($self, $output_ref, $input) = @_;
+	
+	use re 'eval';
+	
+	my $context = $self->_last_context_assert(CTX_ARGS);
+	while ( $context->open_parens > 0 && $input ne '' ) {
+		if ( $input =~ /
+				(.*?)
+				(?| (?> \\ ( [\[\]\|] ) 	(?{ \&_parse_args_escape }) )
+				  | (?> ( \[ )				(?{ \&_parse_args_open }) )
+				  | (?> ( \| )				(?{ \&_parse_args_separator }) )
+				  | (?> ( \] )				(?{ \&_parse_args_close }) )
+				) /sx ) {
+			my $action = $^R;
+			$input = $';			# unparsed input
+			$action->($context);			
+		}
+		else {
+			$context->args->[-1] .= $input;
+			$input = '';
+		}
+	}
+	
+	# check for end of parsing
+	if ( $context->open_parens == 0 ) {
+		$context->commit_func->();
+	}
+	
+	return $input;
+}
+
+sub _parse_args_escape {
+	my($context) = @_;
+	$context->args->[-1] .= $1.$2; 
+}
+
+sub _parse_args_open {
+	my($context) = @_;
+	$context->args->[-1] .= $1.$2;
+	$context->{open_parens}++; 
+}
+
+sub _parse_args_separator {
+	my($context) = @_;
+	if ( $context->open_parens == 1 ) {
+		$context->args->[-1] .= $1;
+		push @{$context->args}, ''; 
+	}
+	else {
+		$context->args->[-1] .= $1.$2;
+	}										
+}
+
+sub _parse_args_close {
+	my($context) = @_;
+	if ( $context->open_parens == 1 ) {
+		$context->args->[-1] .= $1;
+	}
+	else {
+		$context->args->[-1] .= $1.$2;
+	}
+	$context->{open_parens}--;
+}
+
+#------------------------------------------------------------------------------
+# Define a new variable or overwrite an existing one
+sub define_variable {
+	my($self, $name, $value) = @_;
+
+	# setup for a possible recursive _expand(), if definition refers to itself
+	# e.g. %DEFINE_VARIABLE X [#X + 1]
+	$self->variables->{$name} //= '';		# default previous value
+	$self->actions->{'#'.$name} = \&_expand_variable;
+	$self->_update_regexp;
+
+	# expand any macro calls in the value
+	$value = $self->_expand($value);
+	
+	# try to eval as a perl expression, drop value on failure
+	{ 
+		no warnings;
+		my $eval_result = eval $value;
+		if (! $@) {
+			$value = $eval_result;
+		}
+	}
+	$self->variables->{$name} = $value;
+}
+
+sub _expand_variable {
+	my($self, $output_ref, $match, $input) = @_;
+	my $name = substr($match, 1);	# skip '#'
+	return $self->variables->{$name} . $input;
+};
+
+#------------------------------------------------------------------------------
+# deprecated method to define -macro, -script or -variable
+sub define {
+    my($self, $which, $name, $body) = @_;
+
+	if ($which eq '-variable') {
+		$self->define_variable($name, $body);
+	}
+	else {
+		croak "$which mthod not supported";
+	}
+}
+
+1;
+
+
+
+
+
+
+__END__
+
 	'comment',			# True to create the %%[] comment macro
-	'embedded',			# True for embedded processing
-	'opendelim',		# open delimiter for embedded processing
-	'closedelim',		# close delimiter for embedded processing
 	'MACRO',			# Ordered list to hold the macro definitions 
 	'SCRIPT',			# Ordered list to hold the script definitions 
 	'VARIABLE',			# Hash to hold the users variables
@@ -24,11 +464,8 @@ use Object::Tiny::RW
 	'in_macro',			# Are we in a multi-line macro definition?
 	'in_script',		# Are we in a multi-line script definition?
 	'in_case',			# Are we in a %CASE block? 0, 'SKIP' or 1.
-	'in_embedded',		# Are we in embedded text?
 	'cur_name',			# The name of the multi-line macro or script
 	'cur_define',		# The multi-line macro or script we're building up
-	'line_nr',			# Current line number (for multi-line definitions this is 
-						# always the line number of the %DEFINE line)
 	;
 
 ### Private class data and methods. 
@@ -131,25 +568,11 @@ sub _remove_element { # Private object method.
 }
 
 
-#------------------------------------------------------------------------------
-# Destroy object, syntax error if input not complete - e.g. missing close struct
-DESTROY { # Object method
-  ; # Noop
-}
-
-
 ### Public methods
 
 #------------------------------------------------------------------------------
 # Create new object, allow -options 
 sub new { # Class and object method
-    my($class, %opts) = @_;
-	my $self = $class->SUPER::new(
-		line_nr 	=> 1,
-		MACRO		=> [],
-		SCRIPT		=> [],
-		VARIABLE	=> {},
-	);
 	
 	# parse options: -comment
 	if ($opts{-comment}) {
@@ -158,14 +581,6 @@ sub new { # Class and object method
 	}
 	delete $opts{-comment};
 	
-	# parse options: -embedded
-	if ($opts{-embedded} || defined($opts{-opendelim})) {
-		$self->embedded(1);
-		$self->opendelim($opts{-opendelim} // "<:");
-		$self->closedelim($opts{-closedelim} // $opts{-opendelim} // ":>");
-	}
-	delete @opts{qw( -embedded -opendelim -closedelim)};
-
 	# parse options: -file
 	if ($opts{-file}) {
         foreach my $file (@{$opts{-file}}) {
@@ -185,8 +600,6 @@ sub new { # Class and object method
 		delete $opts{$which};
 	}
 	
-	croak "Invalid options ".join(",", sort keys %opts) if %opts;
-		
     $self;
 }
 
@@ -347,14 +760,6 @@ sub undefine_script {
 sub undefine_all_script {
 	my($self) = @_;
 	$self->undefine_all(-script);
-}
-
-
-#------------------------------------------------------------------------------
-# Define a new variable or overwrite an existing one
-sub define_variable {
-	my($self, $name, $value) = @_;
-	$self->define(-variable, $name, $value);
 }
 
 
@@ -779,23 +1184,6 @@ sub _expand { # Object method.
     $_;
 }
 
-#------------------------------------------------------------------------------
-# choose either _expand or _expand_embedded
-sub expand {
-	my($self, $text, $file, $line_nr) = @_;
-	
-    $file //= '-';
-	$line_nr ||= 1;
-    $self->line_nr($line_nr) unless ($self->in_macro || $self->in_script);
-
-	if ($self->embedded) {
-		return $self->_expand_embedded($text, $file, $line_nr);
-	}
-	else {
-		return $self->_expand($text, $file, $line_nr);
-	}
-}
-
 1;
 
 __END__
@@ -860,12 +1248,9 @@ Text::MacroScript - A macro pre-processor with embedded perl capability
     my $Macro = Text::MacroScript->new( -comment => 1 ); # Create the %%[] macro.
 
     # define()
-
-    $Macro->define( -macro, $macroname, $macrobody );
-
-    $Macro->define( -script, $scriptname, $scriptbody );
-
-    $Macro->define( -variable, $variablename, $variablebody );
+    $Macro->define_macro( $macroname, $macrobody );
+    $Macro->define_script( $scriptname, $scriptbody );
+    $Macro->define_variable( $variablename, $variablebody );
 
     # undefine()
 

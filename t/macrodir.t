@@ -6,7 +6,6 @@
 use strict;
 use warnings;
 use Test::More;
-use Test::Differences;
 use Capture::Tiny 'capture';
 use Path::Tiny;
 use Time::HiRes 'usleep';

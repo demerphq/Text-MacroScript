@@ -6,7 +6,6 @@
 use strict;
 use warnings;
 use Capture::Tiny 'capture';
-use Test::Differences;
 use Test::More;
 
 use_ok 'Text::MacroScript';

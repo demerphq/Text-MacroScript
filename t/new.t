@@ -8,7 +8,6 @@ use warnings;
 use Capture::Tiny 'capture';
 use Path::Tiny;
 use POSIX 'strftime';
-use Test::Differences;
 use Test::More;
 
 use_ok 'Text::MacroScript';

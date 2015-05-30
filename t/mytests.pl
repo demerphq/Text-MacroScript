@@ -5,6 +5,7 @@
 
 use strict;
 use warnings;
+use Test::Differences;
 
 # normalize output and expected strings before eq test
 sub _normalize_expected {

@@ -6,7 +6,6 @@
 use strict;
 use warnings;
 use Capture::Tiny 'capture';
-use Test::Differences;
 use Test::More;
 
 my $ms;

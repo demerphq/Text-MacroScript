@@ -1,31 +1,11 @@
-2.09_05	2015-05-28
-
-	Other
-	* Makefile.PL changes
-
-2.09_04	2015-05-24
+2.10	2015-06-11
 
 	Bug Fixes
 	* Fix #61: in some test platforms tests cannot write in the user's 
 	  home directory
-
-	Other
-	* Removed diagnostic messages for #44, #54 and #56
-
-2.09_03	2015-05-21
-
-	Bug Fixes
 	* Fix #53: [rt.cpan.org #104482] Wrong git repository URL
-
-2.09_02	2015-05-20
-
-	Bug Fixes
 	* Fix #60: CPAN test failed: new.t depends on example script that 
 	  requires Image::Size
-
-2.09_01	2015-05-19
-
-	Bug Fixes
 	* Fix #44, #54, #56: CPAN test failed: expand_file(): tilde (~) for 
 	  home directory does not work in windows
 	* Fix #59: CPAN test failed: In some OSs a file open on a directory 
@@ -33,6 +13,10 @@
 
 	Feature Changes
 	* expand_file(): Remove special error message when file does not exist
+
+	Other
+	* Makefile.PL changes
+	* Removed diagnostic messages for #44, #54 and #56
 
 2.09	2015-05-19
 

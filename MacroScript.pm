@@ -9,7 +9,7 @@ use Carp qw( carp croak );
 use Path::Tiny;
 
 use vars qw( $VERSION );
-$VERSION = '2.09_05'; 
+$VERSION = '2.10'; 
 
 use Object::Tiny::RW 
 	'comment',			# True to create the %%[] comment macro

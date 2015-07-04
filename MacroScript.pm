@@ -184,6 +184,10 @@ sub _update_regexp {
 	push @actions_re, qr/ (?> ^ $WS_RE* \% DEFINE_VARIABLE
 												(?{ \&_match_define_variable }) ) /mx;
 
+	# %UNDEFINE_VARIABLE
+	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_VARIABLE
+												(?{ \&_match_undefine_variable }) ) /mx;
+
 	# concatenate operator
 	push @actions_re, qr/ (?> $WS_RE* \# \# $WS_RE*
 												(?{ \&_match_concat }) ) /mx;
@@ -239,6 +243,19 @@ sub _match_define_variable {
 	# change parser
 	$self->parse_func( \&_parse_args );
 	
+	return $input;
+}
+
+sub _match_undefine_variable {
+	my($self, $output_ref, $match, $input) = @_;
+	
+	$input =~ / $WS_RE* ( $NAME_RE ) $WS_RE* /x 
+		or $self->_error("Expected NAME");
+	my $name = $1;
+	$input = $';
+	
+	$self->undefine_variable($name);
+
 	return $input;
 }
 
@@ -434,6 +451,17 @@ sub _expand_variable {
 };
 
 #------------------------------------------------------------------------------
+# Undefine a variable; does nothing if variable does not exist
+sub undefine_variable {
+	my($self, $name) = @_;
+	if (exists $self->variables->{$name}) {
+		delete $self->variables->{$name};
+		delete $self->actions->{'#'.$name};
+		$self->_update_regexp;
+	}
+}
+
+#------------------------------------------------------------------------------
 # deprecated method to define -macro, -script or -variable
 sub define {
     my($self, $which, $name, $body) = @_;
@@ -442,9 +470,21 @@ sub define {
 		$self->define_variable($name, $body);
 	}
 	else {
-		croak "$which mthod not supported";
+		croak "$which method not supported";
 	}
 }
+
+sub undefine {
+    my($self, $which, $name) = @_;
+
+	if ($which eq '-variable') {
+		$self->undefine_variable($name);
+	}
+	else {
+		croak "$which method not supported";
+	}
+}
+
 
 1;
 
@@ -769,14 +809,6 @@ sub undefine_all_script {
 sub list_variable {
 	my($self, $namesonly) = @_;
 	$self->list(-variable, $namesonly);
-}
-
-
-#------------------------------------------------------------------------------
-# Undefine a variable
-sub undefine_variable {
-	my($self, $name) = @_;
-	$self->undefine(-variable, $name);
 }
 
 
@@ -1253,19 +1285,13 @@ Text::MacroScript - A macro pre-processor with embedded perl capability
     $Macro->define_variable( $variablename, $variablebody );
 
     # undefine()
-
-    $Macro->undefine( -macro, $macroname );
-
-    $Macro->undefine( -script, $scriptname );
-
-    $Macro->undefine( -variable, $variablename );
+    $Macro->undefine_macro( $macroname );
+    $Macro->undefine_script( $scriptname );
+    $Macro->undefine_variable( $variablename );
 
     # undefine_all()
-
     $Macro->undefine( -macro );
-
     $Macro->undefine( -script );
-
     $Macro->undefine( -variable );
 
     # list()

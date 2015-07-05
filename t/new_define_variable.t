@@ -19,6 +19,10 @@ is $ms->expand("#X"), "123";
 $ms->define(-variable, 'X', 321);
 is $ms->expand("#X"), "321";
 
+# constructor definition
+$ms = new_ok('Text::MacroScript', [-variable => [ [A => 1], [B => 2] ] ]);
+is $ms->expand("#A#B"), "12";
+
 # escapes and concat
 $ms = new_ok('Text::MacroScript');
 is $ms->expand(), "";

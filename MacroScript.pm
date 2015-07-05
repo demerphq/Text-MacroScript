@@ -98,9 +98,17 @@ sub new {
 	}
 	delete @opts{qw( -embedded -opendelim -closedelim)};
 
+	# parse options: -variable
+	if ($opts{-variable}) {
+		foreach (@{$opts{-variable}}) {
+			my($name, $value) = @$_;
+			$self->define_variable($name, $value);
+		}
+	}
+	delete $opts{-variable};
+	
 	# check for invalid options
-	croak "Invalid options ".join(",", sort keys %opts) if %opts;
-		
+	croak "Invalid options ".join(",", sort keys %opts) if %opts;	
 	
 	$self->_update_regexp;
 	return $self;

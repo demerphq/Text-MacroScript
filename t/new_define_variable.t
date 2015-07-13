@@ -37,7 +37,7 @@ eval {$ms->expand("%DEFINE_VARIABLE*HELLO*")};
 is $@, "Error at file - line 1: Expected NAME [EXPR]\n";
 
 $ms = new_ok('Text::MacroScript');
-$ms->expand("%DEFINE_VARIABLE*HELLO*[");
+is $ms->expand("%DEFINE_VARIABLE*HELLO*["), "";
 eval { $ms->DESTROY };
 is $@, "Error at file - line 1: Unbalanced open structure at end of file\n";
 

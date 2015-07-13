@@ -11,12 +11,15 @@ use Path::Tiny;
 
 use vars qw( $VERSION $WS_RE $NAME_RE );
 $VERSION 	= '2.10_01'; 
-$WS_RE 		= qr/ [\t\f\r ] /x;
-$NAME_RE 	= qr/ [^\s\[\|\]\#\%]+ /x;		# name cannot contain blanks [ | ] # %
+
+BEGIN {
+	$WS_RE 		= qr/ [\t\f\r ] /x;
+	$NAME_RE 	= qr/ [^\s\[\|\]\#\%]+ /x;		# name cannot contain blanks [ | ] # %
+};
 
 #------------------------------------------------------------------------------
 # object to hold current input stack for nested structs
-use enum qw( CTX_ARGS=1 );
+use enum qw( CTX_ARGS=1 CTX_TEXT );
 {
 	package # hide this from CPAN
 		Text::MacroScript::Context;
@@ -25,13 +28,11 @@ use enum qw( CTX_ARGS=1 );
 		'type',					# type of struct to match, one of CTX_...
 		'start_line_nr',		# line number where struct started
 		'commit_func',			# function to call when struct ends
+								# passed $output_ref argument
 
 		# collecting parameters
 		'args',					# current collected arguments
 		'open_parens',			# number of open parenthesis
-		
-		# collecting definitions
-		'text',					# current collected text
 	;
 	
 	sub new {
@@ -42,12 +43,11 @@ use enum qw( CTX_ARGS=1 );
 			start_line_nr	=> $start_line_nr,
 			commit_func		=> $commit_func,
 			
-			args 			=> [''],
+			args 			=> [],
 			open_parens		=> 1,		# init at 1, as first '[' is already matched
-			text			=> '',
 		);
 		return $self;
-	}	
+	}
 }
 
 #------------------------------------------------------------------------------
@@ -61,6 +61,8 @@ use Object::Tiny::RW
 	'context',					# stack of Text::MacroScript::Context, empty if none
 	'actions',					# hash of text -> func($self, $match, $next) to call if matched
 	'variables',				# hash of variable name -> current value
+	'scripts',					# has of scripts
+	'args',						# list of arguments to script
 	'regexp',					# big regexp computed each time text_action changes
 
 	'embedded',					# true if parsing embedded text
@@ -82,6 +84,8 @@ sub new {
 		context		=> [],
 		actions		=> {},
 		variables 	=> {},
+		scripts		=> {},
+		args		=> [],
 		regexp		=> qr//,
 		
 		embedded	=> 0,
@@ -107,6 +111,15 @@ sub new {
 	}
 	delete $opts{-variable};
 	
+	# parse options: -script
+	if ($opts{-script}) {
+		foreach (@{$opts{-script}}) {
+			my($name, $value) = @$_;
+			$self->define_script($name, $value);
+		}
+	}
+	delete $opts{-script};
+	
 	# check for invalid options
 	croak "Invalid options ".join(",", sort keys %opts) if %opts;	
 	
@@ -130,6 +143,8 @@ sub _push_context {
 	my $previous_parse = $self->parse_func;
 	my $context = Text::MacroScript::Context->new($type, $self->line_nr, 
 				sub {
+					my($output_ref) = @_;
+					
 					# pop context
 					my $context = $self->_last_context_assert($type);
 					my @args = @{$context->args};
@@ -139,7 +154,7 @@ sub _push_context {
 					$self->parse_func( $previous_parse );
 					
 					# call commit function with input arguments
-					$commit_func->(@args);
+					$commit_func->($output_ref, @args);
 				});
 	push @{$self->context}, $context;
 }
@@ -196,9 +211,17 @@ sub _update_regexp {
 	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_VARIABLE
 												(?{ \&_match_undefine_variable }) ) /mx;
 
+	# %DEFINE_SCRIPT
+	push @actions_re, qr/ (?> ^ $WS_RE* \% DEFINE_SCRIPT
+												(?{ \&_match_define_script }) ) /mx;
+	
 	# concatenate operator
 	push @actions_re, qr/ (?> $WS_RE* \# \# $WS_RE*
 												(?{ \&_match_concat }) ) /mx;
+	
+	# arguments to scripts
+	push @actions_re, qr/ (?> \# ( \d+ )		(?{ \&_match_expand_arg }) ) /mx;
+	
 	
 	# user actions reverse sorted by length, so that longest match is found
 	my $actions = $self->actions;
@@ -243,7 +266,7 @@ sub _match_define_variable {
 	# create a new context
 	$self->_push_context(CTX_ARGS, 
 			sub {
-				my(@args) = @_;
+				my($output_ref, @args) = @_;
 				@args == 1 or $self->_error("Only one argument expected");
 				$self->define_variable($name, $args[0]);
 			});
@@ -267,6 +290,45 @@ sub _match_undefine_variable {
 	return $input;
 }
 
+sub _match_define_script {
+	my($self, $output_ref, $match, $input) = @_;
+	
+	# collect name
+	$input =~ / $WS_RE* ( $NAME_RE ) $WS_RE* /x 
+		or $self->_error("Expected NAME");
+	my $name = $1;
+	$input = $';
+	
+	# definition in the same line?
+	if ($input =~ /^ \[ /x) {
+		$input = $';
+		
+		# create a new context
+		$self->_push_context(CTX_ARGS, 
+				sub {
+					my($output_ref, @args) = @_;
+					@args == 1 or $self->_error("Only one argument expected");
+					$self->define_script($name, $args[0]);
+				});
+		
+		# change parser
+		$self->parse_func( \&_parse_args );
+	}
+	else {
+		# collect text up to %END_DEFINE
+		$self->_push_context(CTX_TEXT, 
+				sub {
+					my($output_ref, $text) = @_;
+					$self->define_script($name, $text);
+				});
+		
+		# change parser
+		$self->parse_func( \&_parse_collect_text );
+	}		
+
+	return $input;
+}
+
 sub _match_action {
 	my($self, $output_ref, $match, $input) = @_;
 
@@ -274,7 +336,18 @@ sub _match_action {
 		or $self->error("No action found for '$match'");
 	return $func->($self, $output_ref, $match, $input);
 }
+
+sub _match_expand_arg {
+	my($self, $output_ref, $match, $input) = @_;
 	
+	my $arg = $1;
+	($arg < scalar(@{ $self->args }))
+		or $self->_error("Missing parameters");
+	
+	$$output_ref .= $self->_expand( $self->args->[$arg] );
+	return  $input;
+}
+
 #------------------------------------------------------------------------------
 # match engine - recurse to expand all macros, return expanded text
 sub _expand {
@@ -375,12 +448,14 @@ sub _parse_args {
 				  | (?> ( \[ )				(?{ \&_parse_args_open }) )
 				  | (?> ( \| )				(?{ \&_parse_args_separator }) )
 				  | (?> ( \] )				(?{ \&_parse_args_close }) )
-				) /sx ) {
+				) 
+				/sx ) {
 			my $action = $^R;
 			$input = $';			# unparsed input
 			$action->($context);			
 		}
 		else {
+			@{ $context->args } or push @{ $context->args }, '';
 			$context->args->[-1] .= $input;
 			$input = '';
 		}
@@ -388,7 +463,7 @@ sub _parse_args {
 	
 	# check for end of parsing
 	if ( $context->open_parens == 0 ) {
-		$context->commit_func->();
+		$context->commit_func->($output_ref);
 	}
 	
 	return $input;
@@ -396,17 +471,20 @@ sub _parse_args {
 
 sub _parse_args_escape {
 	my($context) = @_;
+	@{ $context->args } or push @{ $context->args }, '';
 	$context->args->[-1] .= $1.$2; 
 }
 
 sub _parse_args_open {
 	my($context) = @_;
+	@{ $context->args } or push @{ $context->args }, '';
 	$context->args->[-1] .= $1.$2;
 	$context->{open_parens}++; 
 }
 
 sub _parse_args_separator {
 	my($context) = @_;
+	@{ $context->args } or push @{ $context->args }, '';
 	if ( $context->open_parens == 1 ) {
 		$context->args->[-1] .= $1;
 		push @{$context->args}, ''; 
@@ -418,6 +496,7 @@ sub _parse_args_separator {
 
 sub _parse_args_close {
 	my($context) = @_;
+	@{ $context->args } or push @{ $context->args }, '';
 	if ( $context->open_parens == 1 ) {
 		$context->args->[-1] .= $1;
 	}
@@ -425,6 +504,25 @@ sub _parse_args_close {
 		$context->args->[-1] .= $1.$2;
 	}
 	$context->{open_parens}--;
+}
+
+# Collect definition in text
+sub _parse_collect_text {
+	my($self, $output_ref, $input) = @_;
+	
+	my $context = $self->_last_context_assert(CTX_TEXT);
+	@{ $context->args } or push @{ $context->args }, '';
+	if ($input =~ / ^ $WS_RE* \% END_DEFINE $WS_RE* /mx) {
+		$context->args->[-1] .= $`;
+		$input = $';
+		$context->commit_func->($output_ref);
+	}
+	else {
+		$context->args->[-1] .= $input;
+		$input = '';
+	}
+
+	return $input;
 }
 
 #------------------------------------------------------------------------------
@@ -455,7 +553,8 @@ sub define_variable {
 sub _expand_variable {
 	my($self, $output_ref, $match, $input) = @_;
 	my $name = substr($match, 1);	# skip '#'
-	return $self->variables->{$name} . $input;
+	$$output_ref .= $self->_expand( $self->variables->{$name} );
+	return $input;
 };
 
 #------------------------------------------------------------------------------
@@ -470,12 +569,71 @@ sub undefine_variable {
 }
 
 #------------------------------------------------------------------------------
+# Define a new script or overwrite an existing one
+sub define_script {
+	my($self, $name, $body) = @_;
+
+	$self->scripts->{$name} = $body;
+	$self->actions->{$name.'['} = \&_script_collect_args;
+	$self->actions->{$name}     = \&_script_no_args;
+	$self->_update_regexp;
+}
+
+sub _script_collect_args {
+	my($self, $output_ref, $match, $input) = @_;
+
+	my $name = substr($match, 0, length($match) - 1 );	# remove '['
+	
+	# create a new context
+	$self->_push_context(CTX_ARGS, 
+			sub {
+				my($rt_output_ref, @args) = @_;
+				$self->_expand_script($name, \@args, $rt_output_ref);
+			});
+	
+	# change parser
+	$self->parse_func( \&_parse_args );
+	
+	return $input;
+}
+
+sub _script_no_args {
+	my($self, $output_ref, $match, $input) = @_;
+
+	my @args;
+	$self->_expand_script($match, \@args, $output_ref);
+
+	return $input;
+}
+
+sub _expand_script {
+	my($self, $name, $args, $output_ref) = @_;
+	my @save_args = @{ $self->args };
+	my @Param = @$args;					# to be used in script body
+	my %Var = %{ $self->variables };	# to be used in script body
+	$self->args( $args );				# set arguments for this call
+	
+	my $expanded_body = $self->_expand( $self->scripts->{$name} );
+	my $evaled_body = eval $expanded_body;
+	$self->_error("Eval error: $@") if $@;
+
+	%{ $self->variables } = %Var;		# update any changed variables
+	
+	$$output_ref .= $evaled_body;
+	
+	$self->args( \@save_args );			# restore previous level args
+}
+
+#------------------------------------------------------------------------------
 # deprecated method to define -macro, -script or -variable
 sub define {
     my($self, $which, $name, $body) = @_;
 
 	if ($which eq '-variable') {
 		$self->define_variable($name, $body);
+	}
+	elsif ($which eq '-script') {
+		$self->define_script($name, $body);
 	}
 	else {
 		croak "$which method not supported";
@@ -488,11 +646,13 @@ sub undefine {
 	if ($which eq '-variable') {
 		$self->undefine_variable($name);
 	}
+	elsif ($which eq '-script') {
+		$self->undefine_script($name);
+	}
 	else {
 		croak "$which method not supported";
 	}
 }
-
 
 1;
 

@@ -23,15 +23,6 @@ is $ms->expand("#X"), "321";
 $ms = new_ok('Text::MacroScript', [-variable => [ [A => 1], [B => 2] ] ]);
 is $ms->expand("#A#B"), "12";
 
-# escapes and concat
-$ms = new_ok('Text::MacroScript');
-is $ms->expand(), "";
-is $ms->expand("hello"), "hello";
-is $ms->expand("hello \\\n world"), "hello   world";
-is $ms->expand("hello \\% world"), "hello % world";
-is $ms->expand("hello \\# world"), "hello # world";
-is $ms->expand("hello ## world"), "helloworld";
-
 # syntax errors
 $ms = new_ok('Text::MacroScript');
 eval {$ms->expand("%DEFINE_VARIABLE")};

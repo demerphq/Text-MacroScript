@@ -281,14 +281,21 @@ sub _match_define_variable {
 	return $input;
 }
 
-sub _match_undefine_variable {
-	my($self, $output_ref, $match, $input) = @_;
+sub _match_undefine {
+	my($self, $input_ref) = @_;
 	
-	$input =~ / $WS_RE* ( $NAME_RE ) $WS_RE* /x 
+	$$input_ref =~ / $WS_RE* ( $NAME_RE ) $WS_RE* /x 
 		or $self->_error("Expected NAME");
 	my $name = $1;
-	$input = $';
+	$$input_ref = $';
 	
+	return $name;
+}
+
+sub _match_undefine_variable {
+	my($self, $output_ref, $match, $input) = @_;
+
+	my $name = $self->_match_undefine( \$input );
 	$self->undefine_variable($name);
 
 	return $input;
@@ -336,11 +343,7 @@ sub _match_define_script {
 sub _match_undefine_script {
 	my($self, $output_ref, $match, $input) = @_;
 	
-	$input =~ / $WS_RE* ( $NAME_RE ) $WS_RE* /x 
-		or $self->_error("Expected NAME");
-	my $name = $1;
-	$input = $';
-	
+	my $name = $self->_match_undefine( \$input );
 	$self->undefine_script($name);
 
 	return $input;

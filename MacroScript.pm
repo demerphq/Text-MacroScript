@@ -215,6 +215,10 @@ sub _update_regexp {
 	push @actions_re, qr/ (?> ^ $WS_RE* \% DEFINE_SCRIPT
 												(?{ \&_match_define_script }) ) /mx;
 	
+	# %UNDEFINE_SCRIPT
+	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_SCRIPT
+												(?{ \&_match_undefine_script }) ) /mx;
+
 	# concatenate operator
 	push @actions_re, qr/ (?> $WS_RE* \# \# $WS_RE*
 												(?{ \&_match_concat }) ) /mx;
@@ -325,6 +329,19 @@ sub _match_define_script {
 		# change parser
 		$self->parse_func( \&_parse_collect_text );
 	}		
+
+	return $input;
+}
+
+sub _match_undefine_script {
+	my($self, $output_ref, $match, $input) = @_;
+	
+	$input =~ / $WS_RE* ( $NAME_RE ) $WS_RE* /x 
+		or $self->_error("Expected NAME");
+	my $name = $1;
+	$input = $';
+	
+	$self->undefine_script($name);
 
 	return $input;
 }
@@ -561,6 +578,7 @@ sub _expand_variable {
 # Undefine a variable; does nothing if variable does not exist
 sub undefine_variable {
 	my($self, $name) = @_;
+	
 	if (exists $self->variables->{$name}) {
 		delete $self->variables->{$name};
 		delete $self->actions->{'#'.$name};
@@ -622,6 +640,19 @@ sub _expand_script {
 	$$output_ref .= $evaled_body;
 	
 	$self->args( \@save_args );			# restore previous level args
+}
+
+#------------------------------------------------------------------------------
+# Undefine a script; does nothing if script does not exist
+sub undefine_script {
+	my($self, $name) = @_;
+	
+	if (exists $self->scripts->{$name}) {
+		delete $self->scripts->{$name};
+		delete $self->actions->{$name.'['};
+		delete $self->actions->{$name};
+		$self->_update_regexp;
+	}
 }
 
 #------------------------------------------------------------------------------

@@ -9,7 +9,6 @@ use Test::More;
 
 my $ms;
 use_ok 'Text::MacroScript';
-#require_ok 't/mytests.pl';
 
 # API call
 $ms = new_ok('Text::MacroScript');

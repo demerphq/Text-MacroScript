@@ -59,9 +59,11 @@ use Object::Tiny::RW
 	'line_nr',					# current line number
 	
 	'context',					# stack of Text::MacroScript::Context, empty if none
-	'actions',					# hash of text -> func($self, $match, $next) to call if matched
+	'actions',					# hash of text -> function to call if matched
 	'variables',				# hash of variable name -> current value
-	'scripts',					# has of scripts
+	'macros',					# hash of scripts/macros name -> body
+	'is_script',				# TRUE for script, false for macro
+	
 	'args',						# list of arguments to script
 	'regexp',					# big regexp computed each time text_action changes
 
@@ -84,7 +86,9 @@ sub new {
 		context		=> [],
 		actions		=> {},
 		variables 	=> {},
-		scripts		=> {},
+		macros		=> {},
+		is_script	=> {},
+
 		args		=> [],
 		regexp		=> qr//,
 		
@@ -110,6 +114,15 @@ sub new {
 		}
 	}
 	delete $opts{-variable};
+	
+	# parse options: -macro
+	if ($opts{-macro}) {
+		foreach (@{$opts{-macro}}) {
+			my($name, $value) = @$_;
+			$self->define_macro($name, $value);
+		}
+	}
+	delete $opts{-macro};
 	
 	# parse options: -script
 	if ($opts{-script}) {
@@ -217,7 +230,15 @@ sub _update_regexp {
 	
 	# %UNDEFINE_SCRIPT
 	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_SCRIPT
-												(?{ \&_match_undefine_script }) ) /mx;
+												(?{ \&_match_undefine_macro_script }) ) /mx;
+
+	# %DEFINE
+	push @actions_re, qr/ (?> ^ $WS_RE* \% DEFINE
+												(?{ \&_match_define_macro }) ) /mx;
+	
+	# %UNDEFINE
+	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE
+												(?{ \&_match_undefine_macro_script }) ) /mx;
 
 	# concatenate operator
 	push @actions_re, qr/ (?> $WS_RE* \# \# $WS_RE*
@@ -301,8 +322,8 @@ sub _match_undefine_variable {
 	return $input;
 }
 
-sub _match_define_script {
-	my($self, $output_ref, $match, $input) = @_;
+sub _match_define_macro_script {
+	my($self, $output_ref, $match, $input, $is_script) = @_;
 	
 	# collect name
 	$input =~ / $WS_RE* ( $NAME_RE ) $WS_RE* /x 
@@ -319,7 +340,7 @@ sub _match_define_script {
 				sub {
 					my($output_ref, @args) = @_;
 					@args == 1 or $self->_error("Only one argument expected");
-					$self->define_script($name, $args[0]);
+					$self->_define_macro_script($name, $args[0], $is_script);
 				});
 		
 		# change parser
@@ -330,7 +351,7 @@ sub _match_define_script {
 		$self->_push_context(CTX_TEXT, 
 				sub {
 					my($output_ref, $text) = @_;
-					$self->define_script($name, $text);
+					$self->_define_macro_script($name, $text, $is_script);
 				});
 		
 		# change parser
@@ -340,11 +361,21 @@ sub _match_define_script {
 	return $input;
 }
 
-sub _match_undefine_script {
+sub _match_define_macro {
+	my($self, $output_ref, $match, $input) = @_;
+	return $self->_match_define_macro_script($output_ref, $match, $input, 0);
+}
+
+sub _match_define_script {
+	my($self, $output_ref, $match, $input) = @_;
+	return $self->_match_define_macro_script($output_ref, $match, $input, 1);
+}
+
+sub _match_undefine_macro_script {
 	my($self, $output_ref, $match, $input) = @_;
 	
 	my $name = $self->_match_undefine( \$input );
-	$self->undefine_script($name);
+	$self->_undefine_macro_script($name);
 
 	return $input;
 }
@@ -556,18 +587,7 @@ sub define_variable {
 	$self->actions->{'#'.$name} = \&_expand_variable;
 	$self->_update_regexp;
 
-	# expand any macro calls in the value
-	$value = $self->_expand($value);
-	
-	# try to eval as a perl expression, drop value on failure
-	{ 
-		no warnings;
-		my $eval_result = eval $value;
-		if (! $@) {
-			$value = $eval_result;
-		}
-	}
-	$self->variables->{$name} = $value;
+	$self->variables->{$name} = $self->_eval_expression($value);
 }
 
 sub _expand_variable {
@@ -577,6 +597,23 @@ sub _expand_variable {
 	return $input;
 };
 
+sub _eval_expression {
+	my($self, $expression) = @_;
+	
+	# expand any macro calls in the expression
+	my $value = $self->_expand($expression);
+	
+	# try to eval as a perl expression, drop value on failure
+	{ 
+		no warnings;
+		my $eval_result = eval $value;
+		if (! $@) {
+			$value = $eval_result;
+		}
+	}
+	return $value;
+}
+	
 #------------------------------------------------------------------------------
 # Undefine a variable; does nothing if variable does not exist
 sub undefine_variable {
@@ -590,17 +627,19 @@ sub undefine_variable {
 }
 
 #------------------------------------------------------------------------------
-# Define a new script or overwrite an existing one
-sub define_script {
-	my($self, $name, $body) = @_;
+# Define a new script/macro or overwrite an existing one
+sub _define_macro_script {
+	my($self, $name, $body, $is_script) = @_;
 
-	$self->scripts->{$name} = $body;
-	$self->actions->{$name.'['} = \&_script_collect_args;
-	$self->actions->{$name}     = \&_script_no_args;
+	$self->macros->{$name} = $body;
+	$self->is_script->{$name} = $is_script;
+	
+	$self->actions->{$name.'['} = \&_macro_script_collect_args;
+	$self->actions->{$name}     = \&_macro_script_no_args;
 	$self->_update_regexp;
 }
 
-sub _script_collect_args {
+sub _macro_script_collect_args {
 	my($self, $output_ref, $match, $input) = @_;
 
 	my $name = substr($match, 0, length($match) - 1 );	# remove '['
@@ -609,7 +648,7 @@ sub _script_collect_args {
 	$self->_push_context(CTX_ARGS, 
 			sub {
 				my($rt_output_ref, @args) = @_;
-				$self->_expand_script($name, \@args, $rt_output_ref);
+				$self->_expand_macro_script($name, \@args, $rt_output_ref);
 			});
 	
 	# change parser
@@ -618,45 +657,70 @@ sub _script_collect_args {
 	return $input;
 }
 
-sub _script_no_args {
+sub _macro_script_no_args {
 	my($self, $output_ref, $match, $input) = @_;
 
 	my @args;
-	$self->_expand_script($match, \@args, $output_ref);
+	$self->_expand_macro_script($match, \@args, $output_ref);
 
 	return $input;
 }
 
-sub _expand_script {
+sub _expand_macro_script {
 	my($self, $name, $args, $output_ref) = @_;
 	my @save_args = @{ $self->args };
 	my @Param = @$args;					# to be used in script body
 	my %Var = %{ $self->variables };	# to be used in script body
 	$self->args( $args );				# set arguments for this call
 	
-	my $expanded_body = $self->_expand( $self->scripts->{$name} );
-	my $evaled_body = eval $expanded_body;
-	$self->_error("Eval error: $@") if $@;
-
-	%{ $self->variables } = %Var;		# update any changed variables
+	my $expanded_body = $self->_expand( $self->macros->{$name} );
 	
-	$$output_ref .= $evaled_body;
+	if ($self->is_script->{$name}) {
+		my $evaled_body = eval $expanded_body;
+		$self->_error("Eval error: $@") if $@;
+
+		%{ $self->variables } = %Var;		# update any changed variables
+		
+		$$output_ref .= $evaled_body;
+	}
+	else {
+		$$output_ref .= $expanded_body;
+	}
 	
 	$self->args( \@save_args );			# restore previous level args
 }
 
 #------------------------------------------------------------------------------
-# Undefine a script; does nothing if script does not exist
-sub undefine_script {
+# Undefine a script/macro; does nothing if script/macro does not exist
+sub _undefine_macro_script {
 	my($self, $name) = @_;
 	
-	if (exists $self->scripts->{$name}) {
-		delete $self->scripts->{$name};
+	if (exists $self->macros->{$name}) {
+	
+		delete $self->macros->{$name};
+		delete $self->is_script->{$name};
+		
 		delete $self->actions->{$name.'['};
 		delete $self->actions->{$name};
+		
 		$self->_update_regexp;
 	}
 }
+
+#------------------------------------------------------------------------------
+# Wrappers for script/macro
+sub define_macro {
+	my($self, $name, $body) = @_;
+	$self->_define_macro_script($name, $body, 0);
+}
+
+sub define_script {
+	my($self, $name, $body) = @_;
+	$self->_define_macro_script($name, $body, 1);
+}
+
+*undefine_macro  = \&_undefine_macro_script;
+*undefine_script = \&_undefine_macro_script;
 
 #------------------------------------------------------------------------------
 # deprecated method to define -macro, -script or -variable
@@ -665,6 +729,9 @@ sub define {
 
 	if ($which eq '-variable') {
 		$self->define_variable($name, $body);
+	}
+	elsif ($which eq '-macro') {
+		$self->define_macro($name, $body);
 	}
 	elsif ($which eq '-script') {
 		$self->define_script($name, $body);
@@ -680,6 +747,9 @@ sub undefine {
 	if ($which eq '-variable') {
 		$self->undefine_variable($name);
 	}
+	elsif ($which eq '-macro') {
+		$self->undefine_macro($name);
+	}
 	elsif ($which eq '-script') {
 		$self->undefine_script($name);
 	}
@@ -690,125 +760,13 @@ sub undefine {
 
 1;
 
-
-
-
-
-
 __END__
 
 	'comment',			# True to create the %%[] comment macro
-	'MACRO',			# Ordered list to hold the macro definitions 
-	'SCRIPT',			# Ordered list to hold the script definitions 
-	'VARIABLE',			# Hash to hold the users variables
 	
     # State temporaries used during processing
-	'in_macro',			# Are we in a multi-line macro definition?
-	'in_script',		# Are we in a multi-line script definition?
 	'in_case',			# Are we in a %CASE block? 0, 'SKIP' or 1.
-	'cur_name',			# The name of the multi-line macro or script
-	'cur_define',		# The multi-line macro or script we're building up
 	;
-
-### Private class data and methods. 
-
-sub _expand_variable { # Private object method.
-    my $self  = shift;
-    local $_  = (shift || '');
-
-    foreach my $var (  
-                sort { 
-                    length( $b ) <=> length( $a ) ||
-                            $b   cmp         $a 
-                    } keys %{$self->VARIABLE} 
-
-                ) {
-        s/#\Q$var\E/\$Var{"$var"}/msg;
-    }
-
-    $_;
-}
-
-
-# This is based on the 'binary_string' function, pg 163 of Mastering
-# Algorithms with Perl (with the errata).
-sub _find_element { # Private object method.
-    my( $self, $array_name, $target ) = @_;
-
-    my $target_len    = length $target;
-
-    my( $low, $high ) = ( 0, scalar @{$self->{$array_name}} );
-
-    while( $low < $high ) {
-        use integer;
-
-        my $index        = ( $low + $high ) / 2;
-
-        my $in_array     = $self->{$array_name}->[$index][0];
-        my $in_array_len = length $in_array;
-
-        # Order by longest, then by ASCII.
-        if( $in_array_len > $target_len or
-            ( $in_array_len == $target_len and
-              $in_array     lt $target ) ) {
-            $low  = $index + 1; 
-        }
-        elsif( $in_array eq $target ) { # This is more efficient than just
-            $low  = $index;            # having the else.
-            last;
-        }
-        else {
-            $high = $index;
-        }
-    }
-
-    $low;
-}
-
-
-sub _insert_element { # Private object method.
-    my( $self, $array_name, $name, $body ) = @_;
-
-    if( $array_name eq 'VARIABLE' ) {
-        $self->{$array_name}{$name} = $body;
-    }
-    else {
-        my $index = $self->_find_element( $array_name, $name );
-
-        if( $index < @{$self->{$array_name}} and
-            $self->{$array_name}->[$index][0] eq $name ) {
-            # Already there so replace $body.
-            $self->{$array_name}->[$index] = [ $name, $body ];
-        }
-        else {
-            # Not there so insert it.
-            splice( @{$self->{$array_name}}, $index, 0, [ $name, $body ] );
-        }
-    }
-}
-
-
-sub _remove_element { # Private object method.
-    my( $self, $array_name, $name ) = @_;
-
-    my $element = undef;
-
-    if( $array_name eq 'VARIABLE' ) {
-        $element = delete $self->{$array_name}{$name} 
-        if exists $self->{$array_name}{$name};
-    }
-    else {
-        my $index = $self->_find_element( $array_name, $name );
-
-        if( $index < @{$self->{$array_name}} and
-            $self->{$array_name}->[$index][0] eq $name ) {
-            $element = splice( @{$self->{$array_name}}, $index, 1 );
-        }
-    }
-
-    $element;
-}
-
 
 ### Public methods
 
@@ -831,37 +789,7 @@ sub new { # Class and object method
 	}
 	delete $opts{-file};
 	
-	# parse options: -variable, -macro, -script
-	for my $which (qw( -variable -macro -script )) {
-		if ($opts{$which}) {
-			foreach (@{$opts{$which}}) {
-				my($name, $body) = @$_;
-				$self->define($which, $name, $body);
-			}
-		}
-		delete $opts{$which};
-	}
-	
     $self;
-}
-
-
-#------------------------------------------------------------------------------
-# deprecated method to define -macro, -script or -variable
-sub define { # Object method.
-    my( $self, $which, $name, $body ) = @_;
-
-    $self->_insert_element( uc substr( $which, 1 ), $name, $body );
-}
-
-#------------------------------------------------------------------------------
-# deprecated method to undefine -macro, -script or -variable
-sub undefine { # Object method.
-    my( $self, $which, $name ) = @_;
-
-    $which = uc substr( $which, 1 );
-    carp "Cannot undefine non-existent $which $name" unless 
-    $self->_remove_element( $which, $name ); 
 }
 
 
@@ -930,32 +858,11 @@ sub undefine_all { # Object method.
 
 
 #------------------------------------------------------------------------------
-# Define a new macro or overwrite an existing one
-# $arg_names is reference to list of formal parameters
-sub define_macro {
-	my($self, $name, $arg_names, $body) = @_;
-	if (! ref($arg_names)) {
-		$body = $arg_names;
-		$arg_names = [];
-	}
-	$self->define(-macro, $name, $body);
-}
-
-
-#------------------------------------------------------------------------------
 # List all the macros to STDOUT or return to array, option -nameonly to list 
 # only name
 sub list_macro {
 	my($self, $namesonly) = @_;
 	$self->list(-macro, $namesonly);
-}
-
-
-#------------------------------------------------------------------------------
-# Undefine a macro
-sub undefine_macro {
-	my($self, $name) = @_;
-	$self->undefine(-macro, $name);
 }
 
 
@@ -968,32 +875,11 @@ sub undefine_all_macro {
 
 
 #------------------------------------------------------------------------------
-# Define a new script or overwrite an existing one
-# $arg_names is reference to list of formal parameters
-sub define_script {
-	my($self, $name, $arg_names, $body) = @_;
-	if (! ref($arg_names)) {
-		$body = $arg_names;
-		$arg_names = [];
-	}
-	$self->define(-script, $name, $body);
-}
-
-
-#------------------------------------------------------------------------------
 # List all the scripts to STDOUT or return to array, option -nameonly to list 
 # only name
 sub list_script {
 	my($self, $namesonly) = @_;
 	$self->list(-script, $namesonly);
-}
-
-
-#------------------------------------------------------------------------------
-# Undefine a script
-sub undefine_script {
-	my($self, $name) = @_;
-	$self->undefine(-script, $name);
 }
 
 
@@ -1422,11 +1308,9 @@ sub _expand { # Object method.
 
 __END__
 
-
 =head1 NAME
 
 Text::MacroScript - A macro pre-processor with embedded perl capability 
-
 
 =head1 SYNOPSIS
 
@@ -1529,7 +1413,6 @@ documentation on the embedded approach.
 The C<macroutil.pl> library supplied provides some functions which you may
 choose to use in HTML work for example.
 
-
 =head1 MACRO SYSTEMS VS EMBEDDED SYSTEMS
 
 Macro systems read all the text, substituting anything which matches a macro
@@ -1549,7 +1432,6 @@ then carry on printing text until they hit an opening delimeter and so on
 until they've finished processing all the text. This module now provides both
 approaches. 
 
-
 =head1 DESCRIPTION
 
 Define macros, scripts and variables in macro files or directly in text files. 
@@ -1566,9 +1448,7 @@ directly supports an embedded approach and this is now documented. Although
 you can specify your own delimiters where shown in examples we use the default
 delimiters of C<E<lt>:> and C<:E<gt>> throughout.
 
-
 =head2 Public methods
-
 
 =head3 new
 
@@ -1666,7 +1546,6 @@ See also L</%DEFINE_VARIABLE>.
 
 =back
 
-
 =head3 define_macro
 
   $Macro->define_macro( $name, $body );
@@ -1681,7 +1560,6 @@ This is the same as the deprecated syntax:
 
 See also L</%DEFINE>.
 
-
 =head3 list_macro
 
   $Macro->list_macro;            # lists to STDOUT
@@ -1691,7 +1569,6 @@ See also L</%DEFINE>.
 Lists all defined macros to C<STDOUT> or returns the result if called in 
 list context. Accepts an optional parameter C<-namesonly> to list only
 the macro names and not the body.
-
 
 =head3 undefine_macro
 
@@ -1706,7 +1583,6 @@ This is the same as the deprecated syntax:
 
 See also L</%UNDEFINE>.
 
-
 =head3 undefine_all_macro
 
   $Macro->undefine_all_macro;
@@ -1719,7 +1595,6 @@ This is the same as the deprecated syntax:
 
 See also L</%UNDEFINE_ALL>.
 
-
 =cut
 #  $Macro->define_macro( $name, \@arg_names, $body );
 #The optional array of C<@arg_names> contains the names of local variables
@@ -1730,11 +1605,9 @@ See also L</%UNDEFINE_ALL>.
 #  $Macro->define_macro( 'ADD', ['A', 'B'], "#A+#B" );
 #  $Macro->expand("ADD[2|3]"); --> "2+3"
 
-
 =head3 define_script
 
   $Macro->define_script( $name, $body );
-
 
 Defines a perl script with the given name that executes the given body 
 when called. If a script with the same name already exists, it is 
@@ -1742,11 +1615,9 @@ silently overwritten.
 
 This is the same as the deprecated syntax:
 
-
   $Macro->define( -script, $name, $body );
 
 See also L</%DEFINE_SCRIPT>.
-
 
 =head3 list_script
 
@@ -1757,7 +1628,6 @@ See also L</%DEFINE_SCRIPT>.
 Lists all defined scripts to C<STDOUT> or returns the result if called in 
 list context. Accepts an optional parameter C<-namesonly> to list only
 the script names and not the body.
-
 
 =head3 undefine_script
 
@@ -1772,7 +1642,6 @@ This is the same as the deprecated syntax:
 
 See also L</%UNDEFINE_SCRIPT>.
 
-
 =head3 undefine_all_script
 
   $Macro->undefine_all_script;
@@ -1785,7 +1654,6 @@ This is the same as the deprecated syntax:
 
 See also L</%UNDEFINE_ALL_SCRIPT>.
 
-
 =cut
 #  $Macro->define_script( $name, \@arg_names, $body );
 #
@@ -1796,7 +1664,6 @@ See also L</%UNDEFINE_ALL_SCRIPT>.
 #
 #  $Macro->define_script( 'ADD', ['A', 'B'], "#A+#B" );
 #  $Macro->expand("ADD[2|3]"); --> "5"
-
 
 =head3 define_variable
 
@@ -1811,7 +1678,6 @@ This is the same as the deprecated syntax:
 
 See also L</%DEFINE_VARIABLE>.
 
-
 =head3 list_variable
 
   $Macro->list_variable;             # lists to STDOUT
@@ -1821,7 +1687,6 @@ See also L</%DEFINE_VARIABLE>.
 Lists all defined variables to C<STDOUT> or returns the result if called in 
 list context. Accepts an optional parameter C<-namesonly> to list only
 the variable names and not the body.
-
 
 =head3 undefine_variable
 
@@ -1836,8 +1701,6 @@ This is the same as the deprecated syntax:
 
 See also L</%UNDEFINE_VARIABLE>.
 
-
-
 =head3 undefine_all_variable
 
   $Macro->undefine_all_variable;
@@ -1849,7 +1712,6 @@ This is the same as the deprecated syntax:
   $Macro->undefine_all( -variable );
 
 See also L</%UNDEFINE_ALL_VARIABLE>.
-
 
 =head3 expand
 
@@ -1869,13 +1731,11 @@ calls found in the input text. C<expand()> buffers internally all the
 lines required for a multi-line definition, i.e. it can be called once 
 for each line of a multi-line L</%DEFINE>. 
 
-
 =head3 load_file
 
   $Macro->load_file( $filename );
 
 See also L</%LOAD> and C<macropp -f>.
-
 
 =head3 expand_file
 
@@ -1890,12 +1750,10 @@ Calls C<expand()> on each line of the file.
 
 See also L</%INCLUDE>. 
 
-
 =head1 MACRO LANGUAGE
 
 This chapter describes the macro language statements processed in the 
 input files. 
-
 
 =head2 Defining and using macros
 
@@ -1907,7 +1765,6 @@ any parameters that are given.
 Note that if we are using an embedded approach commands, macro names and 
 script names should appear between delimiters. (Except when we L</%LOAD> since
 this assumes the whole file is I<embedded>.
-
 
 =head3 %DEFINE
 
@@ -2066,7 +1923,6 @@ becomes
 Note that the C<@s> had to be escaped because they have a special meaning in
 perl.
 
-
 =head3 %UNDEFINE
 
 Macros can be undefined in files:
@@ -2079,7 +1935,6 @@ and in code:
 
 Undefining a non-existing macro is not considered an error.
 
-
 =head3 %UNDEFINE_ALL
 
 All macros can be undefined in files:
@@ -2089,7 +1944,6 @@ All macros can be undefined in files:
 and in code:
 
   $Macro->undefine_all_macro; 
-
 
 =head3 %DEFINE_SCRIPT
 
@@ -2163,7 +2017,6 @@ C<$variables> weren't interpolated:
   "#0 on ".strftime("%Y/%m/%d", localtime(time));
   __EOT__
 
- 
 Here's (a somewhat contrived example of) how the above would be used:
 
   <HTML>
@@ -2228,7 +2081,6 @@ For more (and better) HTML examples see the example file C<html.macro>.
 The body of a script may not contain a literal null. If you really need one
 then represent the null as C<chr(0)>. 
 
-
 =head3 %UNDEFINE_SCRIPT
 
 Scripts can be undefined in files:
@@ -2241,7 +2093,6 @@ and in code:
 
 Undefining a non-existing script is not considered an error.
 
-
 =head3 %UNDEFINE_ALL_SCRIPT
 
 All scripts can be undefined in files:
@@ -2251,7 +2102,6 @@ All scripts can be undefined in files:
 and in code:
 
   $Macro->undefine_all_script; 
-
 
 =head3 %DEFINE_VARIABLE
 
@@ -2314,7 +2164,6 @@ that point on globally.
 
 Variables are also used with L</%CASE>.
 
-
 =head3 %UNDEFINE_VARIABLE
 
 Variables can be undefined in files:
@@ -2327,7 +2176,6 @@ and in code:
 
 Undefining a non-existing variable is not considered an error.
 
-
 =head3 %UNDEFINE_ALL_VARIABLE
 
 All variables can be undefined in files:
@@ -2338,7 +2186,6 @@ and in code:
 
   $Macro->undefine_all_variable; 
 
-
 One use of undefining everything is to ensure we get a clean start. We might
 head up our files thus:
 
@@ -2347,7 +2194,6 @@ head up our files thus:
   %UNDEFINE_ALL_VARIABLE
   %LOAD[mymacros]
   text goes here
-
 
 =head2 Loading and including files
 
@@ -2391,7 +2237,6 @@ or from the command line:
 
   % macropp test.html.m > test.html
 
-
 At the beginning of our lout typesetting files we might put this line:
 
     %LOAD[local.macros]
@@ -2425,7 +2270,6 @@ Macros and scripts are expanded in the following order:
 1. scripts (longest named first, shortest named last)
 2. macros  (longest named first, shortest named last)
 
-
 =head3 %LOAD
 
   %LOAD[file]
@@ -2444,7 +2288,6 @@ New defintions of the same macro override old defintions, thus one can first
 L</%LOAD> a global macro file, and then a local project file that can override
 some of the global macros.
 
-
 =head3 %INCLUDE
 
   %INCLUDE[file]
@@ -2455,7 +2298,6 @@ or its code equivalent
 
 instatiates any definitions that appear in the file, expands definitions 
 and sends any other text to the current output filehandle. 
-
 
 =head3 %REQUIRE
 
@@ -2471,13 +2313,9 @@ There is no equivalent object method because if we're writing code we can
 C<use> or c<require> as needed and if we're writing macros then we use
 L</%REQUIRE>.
 
-
-
 =head2 Control Structures
 
-
 =head3 %CASE
-
 
 It is possible to selectively skip parts of the text.
 
@@ -2559,7 +2397,6 @@ We can use any other macro/script command within L</%CASE> commands, e.g.
 L</%DEFINE>s, etc., as well as have any text that will be macro/script expanded
 as normal.
 
-
 =head2 Comments
 
 Generally the text files that we process are in formats that support
@@ -2599,7 +2436,6 @@ However the easiest way to comment is to use L</%CASE>:
     condition is always false.
     %END_CASE
 
-
 =head1 IMPORTABLE FUNCTIONS
 
 In version 1.25 I introduced some useful importable functions. These have now
@@ -2607,7 +2443,6 @@ been removed from the module. Instead I supply a perl library C<macroutil.pl>
 which has these functions (abspath, relpath, today) since Text::MacroScript
 can now `require' in any library file you like using the L</%REQUIRE>
 directive.
-
 
 =head1 EXAMPLES
 
@@ -2618,17 +2453,14 @@ images up until a specified expiry date using variables.
 
 (Also see DESCRIPTION.)
 
-
 =head1 BUGS
 
 Lousy error reporting for embedded perl in most cases.
-
 
 =head1 AUTHOR
 
 Mark Summerfield. I can be contacted as <summer@perlpress.com> -
 please include the word 'macro' in the subject line.
-
 
 =head1 MAINTAINER
 
@@ -2638,7 +2470,6 @@ This module repository is kept in Github, please feel free to submit issues,
 fork and send pull requests.
 
     https://github.com/pauloscustodio/Text-MacroScript
-
 
 =head1 COPYRIGHT
 

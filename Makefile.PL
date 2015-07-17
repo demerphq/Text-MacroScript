@@ -60,6 +60,7 @@ WriteMakefile(
     clean               => { FILES => [ 'Text-MacroScript-*',
 										'*.tmp',
 										'*.bak',
+										'test*~',
 									  ]
 						   },
 ) ;

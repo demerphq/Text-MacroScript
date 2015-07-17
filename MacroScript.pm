@@ -97,6 +97,7 @@ sub new {
 		opendelim	=> '<:',
 		closedelim	=> ':>',
 	);
+	$self->_update_regexp;
 	
 	# parse options: -embedded
 	if ($opts{-embedded} || defined($opts{-opendelim})) {
@@ -133,10 +134,17 @@ sub new {
 	}
 	delete $opts{-script};
 	
+	# parse options: -file
+	if ($opts{-file}) {
+        foreach my $file (@{$opts{-file}}) {
+            $self->load_file($file);
+        }
+	}
+	delete $opts{-file};
+	
 	# check for invalid options
 	croak "Invalid options ".join(",", sort keys %opts) if %opts;	
 	
-	$self->_update_regexp;
 	return $self;
 }
 
@@ -239,6 +247,10 @@ sub _update_regexp {
 	# %UNDEFINE
 	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE
 												(?{ \&_match_undefine_macro_script }) ) /mx;
+
+	# %LOAD
+	push @actions_re, qr/ (?> ^ $WS_RE* \% LOAD
+												(?{ \&_match_load }) ) /mx;
 
 	# concatenate operator
 	push @actions_re, qr/ (?> $WS_RE* \# \# $WS_RE*
@@ -366,6 +378,27 @@ sub _match_define_macro {
 	return $self->_match_define_macro_script($output_ref, $match, $input, 0);
 }
 
+sub _match_load {
+	my($self, $output_ref, $match, $input) = @_;
+	
+	$input =~ / $WS_RE* \[ /x 
+		or $self->_error("Expected [FILENAME]");
+	$input = $';
+	
+	# create a new context
+	$self->_push_context(CTX_ARGS, 
+			sub {
+				my($output_ref, @args) = @_;
+				@args == 1 or $self->_error("Only one argument expected");
+				$self->load_file($args[0]);
+			});
+	
+	# change parser
+	$self->parse_func( \&_parse_args );
+	
+	return $input;
+}
+
 sub _match_define_script {
 	my($self, $output_ref, $match, $input) = @_;
 	return $self->_match_define_macro_script($output_ref, $match, $input, 1);
@@ -384,7 +417,7 @@ sub _match_action {
 	my($self, $output_ref, $match, $input) = @_;
 
 	my $func = $self->actions->{$match} 
-		or $self->error("No action found for '$match'");
+		or $self->_error("No action found for '$match'");
 	return $func->($self, $output_ref, $match, $input);
 }
 
@@ -708,6 +741,63 @@ sub _undefine_macro_script {
 }
 
 #------------------------------------------------------------------------------
+# load macro definitions from a file
+sub load_file {
+    my($self, $file) = @_;
+
+    # Treat loaded files as if wrapped in delimiters (only affects embedded
+    # processing).
+    my $in_embedded = $self->in_embedded; 
+    $self->in_embedded(1); 
+
+    $self->expand_file($file, -noprint);
+
+    $self->in_embedded($in_embedded); 
+}
+
+#------------------------------------------------------------------------------
+# parses the given file with expand() 
+# Usage: $macro->expand_file($filename)
+# In an array context will return the file, e.g.
+# @expanded = $macro->expand_file($filename);
+# In a void context will print to the current output filehandle
+sub expand_file {
+    my($self, $file, $noprint) = @_;
+
+    # We need this because eval creates a scalar context.
+    my $wantarray = wantarray;
+
+    my @lines;
+
+	croak "Missing filename"            unless     $file; 
+	
+	# let Path::Tiny handle '~' processing
+	$file = path($file);
+	
+	local $_;
+
+	open my $fh, $file or croak "Open '$file' failed: $!";
+	my $line_nr;
+	
+	while( <$fh> ) {
+		$line_nr++;
+		my $line = $self->expand( $_, $file, $line_nr );
+		next unless defined($line) && $line ne '';
+
+		if( $wantarray ) {
+			push @lines, $line;
+		}
+		else {
+			print $line unless $noprint;
+		}
+	}
+
+	close $fh or croak "Close '$file' failed: $!";
+
+    return @lines if $wantarray && ! $noprint;
+}
+
+#------------------------------------------------------------------------------
 # Wrappers for script/macro
 sub define_macro {
 	my($self, $name, $body) = @_;
@@ -780,14 +870,6 @@ sub new { # Class and object method
 		$self->comment(1);
 	}
 	delete $opts{-comment};
-	
-	# parse options: -file
-	if ($opts{-file}) {
-        foreach my $file (@{$opts{-file}}) {
-            $self->load_file($file);
-        }
-	}
-	delete $opts{-file};
 	
     $self;
 }
@@ -913,70 +995,6 @@ sub undefine_all_variable {
 sub _define_standard_comment {
     my($self) = @_;
     $self->define_macro('%%', '');
-}
-
-
-#------------------------------------------------------------------------------
-# load macro definitions from a file
-sub load_file { # Object method.
-    my( $self, $file ) = @_;
-
-    # Treat loaded files as if wrapped in delimiters (only affects embedded
-    # processing).
-    my $in_embedded = $self->in_embedded; 
-    $self->in_embedded(1); 
-
-    $self->expand_file( $file, -noprint );
-
-    $self->in_embedded($in_embedded); 
-}
-
-
-#------------------------------------------------------------------------------
-# parses the given file with expand() 
-# Usage: $macro->expand_file( name, body )
-# In an array context will return the file, e.g.
-# @expanded = $macro->expand_file( name, body );
-# In a void context will print to the current filehandle
-sub expand_file { # Object method.
-    my($self, $file, $noprint) = @_;
-
-    # We need this because eval creates a scalar context.
-    my $wantarray = wantarray;
-
-    my @lines;
-
-	croak "Missing filename"            unless     $file; 
-	
-	# let Path::Tiny handle '~' processing
-	$file = path($file);
-	
-	local $_;
-
-	open my $fh, $file or croak "Open '$file' failed: $!";
-	my $line_nr;
-	
-	while( <$fh> ) {
-		$line_nr++;
-		my $line = $self->expand( $_, $file, $line_nr );
-		next unless defined($line) && $line ne '';
-
-		if( $wantarray ) {
-			push @lines, $line;
-		}
-		else {
-			print $line unless $noprint;
-		}
-	}
-
-	close $fh or croak "Close '$file' failed: $!";
-
-	if( $self->in_macro || $self->in_script ) {
-		my $which = $self->in_macro ? 'DEFINE' : 'DEFINE_SCRIPT';
-		croak "Runaway \%$which from $file line ".$self->line_nr." to end of file"
-	}
-
-    @lines if $wantarray && ! $noprint;
 }
 
 

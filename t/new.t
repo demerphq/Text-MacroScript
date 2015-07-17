@@ -38,25 +38,6 @@ eval { Text::MacroScript->new(-no=>0,-such=>0,-option=>0); };
 check_error(__LINE__-1, $@, "Invalid options -no,-option,-such __LOC__.\n");
 
 #------------------------------------------------------------------------------
-# -file
-$ms = new_ok('Text::MacroScript' => [ -file => [ $test1 ] ] );
-is $ms->expand("hello"), "world";
-
-#------------------------------------------------------------------------------
-# %LOAD
-$ms = new_ok('Text::MacroScript');
-is $ms->expand("hello"), "hello";
-is $ms->expand("%LOAD[$test1]\n"), "";
-is $ms->expand("hello"), "world";
-
-#------------------------------------------------------------------------------
-# load_file
-$ms = new_ok('Text::MacroScript');
-is $ms->expand("hello"), "hello";
-$ms->load_file($test1);
-is $ms->expand("hello"), "world";
-
-#------------------------------------------------------------------------------
 # %INCLUDE
 $ms = new_ok('Text::MacroScript');
 is $ms->expand("%INCLUDE[$test1]\n"), 

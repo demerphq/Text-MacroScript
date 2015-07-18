@@ -38,13 +38,6 @@ eval { Text::MacroScript->new(-no=>0,-such=>0,-option=>0); };
 check_error(__LINE__-1, $@, "Invalid options -no,-option,-such __LOC__.\n");
 
 #------------------------------------------------------------------------------
-# %INCLUDE
-$ms = new_ok('Text::MacroScript');
-is $ms->expand("%INCLUDE[$test1]\n"), 
-	"Test text with hello\n".
-	"Test text with world\n";
-
-#------------------------------------------------------------------------------
 # %REQUIRE
 $ms = new_ok('Text::MacroScript');
 is $ms->expand("%REQUIRE[$test2]\n"), "";

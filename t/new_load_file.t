@@ -12,6 +12,7 @@ use Test::More;
 my $ms;
 my $test1 = "test1~";
 my $test2 = "test2~";
+my $test3 = "test3~";
 use_ok 'Text::MacroScript';
 require_ok 't/mytests.pl';
 
@@ -44,5 +45,14 @@ is $ms->expand("%LOAD[$test1]"), "";
 is $ms->expand("%LOAD[$test2]"), "";
 is $ms->expand("hello"), "WORLD";
 
-ok unlink($test1, $test2);
+unlink $test3;
+$ms = new_ok('Text::MacroScript');
+eval {$ms->expand("%LOAD")};
+is $@, "Error at file - line 1: Expected [FILENAME]\n";
+
+$ms = new_ok('Text::MacroScript');
+eval {$ms->expand("%LOAD[$test3]")};
+check_error(__LINE__-1, $@, "Error at file - line 1: Open '$test3' failed: OS-ERROR\n");
+
+ok unlink($test1, $test2, $test3);
 done_testing;

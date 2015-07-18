@@ -5,6 +5,7 @@
 
 use strict;
 use warnings;
+use Path::Tiny;
 use Test::Differences;
 
 # normalize output and expected strings before eq test
@@ -19,7 +20,7 @@ sub _normalize_output {
 	s/\\/\//g;
 	s/\.$//gm;		# remove end "." from eval error message as it differs in perl versions
 	s/\S+(Text\/MacroScript\.pm line) \d+/$1 99/g;
-	s/(Open .*? failed:) .*? (at)/$1 ERROR $2/g;
+	s/(Open .*? failed: ).*( at.*)?/ $1."ERROR".($2 || "") /ge;
 	return $_;
 }
 

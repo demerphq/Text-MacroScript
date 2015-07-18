@@ -26,45 +26,6 @@ my $file = "testmacroscript.tmp~";
 $ms = new_ok('Text::MacroScript');
 
 #------------------------------------------------------------------------------
-# open file failed
-eval { $ms->expand_file; };
-check_error(__LINE__-1, $@, "Missing filename __LOC__.\n");
-
-unlink $file;
-eval { $ms->expand_file($file); };
-check_error(__LINE__-1, $@, "Open '$file' failed: OS error __LOC__.\n");
-
-#------------------------------------------------------------------------------
-# open file in ~
-if (! -d path("~")) {
-	diag "directory '~' not found";
-}
-else {
-for my $file ("~/$file", "$file") {
-	$ms = new_ok('Text::MacroScript');
-	t_spew($file, "hello\nworld\n");
-		if (! -f $file) {
-			diag "file '$file' not found";
-		}
-		else {
-	@res = $ms->expand_file($file);
-	is_deeply \@res, [
-		"hello\n",
-		"world\n",
-	];
-
-	($out,$err,@res) = capture { void { $ms->expand_file($file); } };
-	is $out, 
-		"hello\n".
-		"world\n";
-	is $err, "";
-
-	path($file)->remove;
-		}
-	}
-}
-
-#------------------------------------------------------------------------------
 # error messages: unclosed %DEFINE
 t_spew($file, "\n\n%DEFINE xx\nyy\nzz\n");
 $ms = new_ok('Text::MacroScript');
@@ -200,35 +161,5 @@ ERR
 path($file)->remove;
 
 #------------------------------------------------------------------------------
-# test embedded
-for ([ [ -embedded => 1 ], 							"<:", ":>" ],
-     [ [ -opendelim => "<<", -closedelim => ">>" ], "<<", ">>" ],
-     [ [ -opendelim => "!!" ], 						"!!", "!!" ],
-	) {
-	my($args, $OPEN, $CLOSE) = @$_;
-	my @args = @$args;
-	note "@args $OPEN $CLOSE";
-	
-	$ms = new_ok('Text::MacroScript' => [ @args ]);
-	t_spew($file, <<END);
-hello ${OPEN}%DEFINE hello
-Hallo
-%END_DEFINE${CLOSE}world ${OPEN}%DEFINE world
-Welt
-%END_DEFINE${CLOSE}${OPEN}hello world${CLOSE}
-END
-	@res = $ms->expand_file($file);
-	is_deeply \@res, ["hello ", "world ", "Hallo\n Welt\n\n"];
-	path($file)->remove;
-
-	$ms = new_ok('Text::MacroScript' => [ @args ]);
-	t_spew($file, <<END);
-hello ${OPEN}%DEFINE hello [Hallo]${CLOSE}world${OPEN}%DEFINE world [Welt]${CLOSE}
-${OPEN}hello world${CLOSE}
-END
-	@res = $ms->expand_file($file);
-	is_deeply \@res, ["hello world\n", "Hallo Welt\n"];
-	path($file)->remove;
-}
 
 done_testing;

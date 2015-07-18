@@ -252,6 +252,10 @@ sub _update_regexp {
 	push @actions_re, qr/ (?> ^ $WS_RE* \% LOAD
 												(?{ \&_match_load }) ) /mx;
 
+	# %INCLUDE
+	push @actions_re, qr/ (?> ^ $WS_RE* \% INCLUDE
+												(?{ \&_match_include }) ) /mx;
+
 	# concatenate operator
 	push @actions_re, qr/ (?> $WS_RE* \# \# $WS_RE*
 												(?{ \&_match_concat }) ) /mx;
@@ -359,6 +363,8 @@ sub _match_define_macro_script {
 		$self->parse_func( \&_parse_args );
 	}
 	else {
+		$input =~ s/^\s+//;		# eat newline
+
 		# collect text up to %END_DEFINE
 		$self->_push_context(CTX_TEXT, 
 				sub {
@@ -378,8 +384,8 @@ sub _match_define_macro {
 	return $self->_match_define_macro_script($output_ref, $match, $input, 0);
 }
 
-sub _match_load {
-	my($self, $output_ref, $match, $input) = @_;
+sub _match_filename {
+	my($self, $input, $func) = @_;
 	
 	$input =~ / $WS_RE* \[ /x 
 		or $self->_error("Expected [FILENAME]");
@@ -388,15 +394,25 @@ sub _match_load {
 	# create a new context
 	$self->_push_context(CTX_ARGS, 
 			sub {
-				my($output_ref, @args) = @_;
+				my($rt_output_ref, @args) = @_;
 				@args == 1 or $self->_error("Only one argument expected");
-				$self->load_file($args[0]);
+				$self->$func($rt_output_ref, $args[0]);
 			});
 	
 	# change parser
 	$self->parse_func( \&_parse_args );
 	
 	return $input;
+}
+
+sub _match_load {
+	my($self, $output_ref, $match, $input) = @_;
+	return $self->_match_filename($input, \&_load_file);
+}
+
+sub _match_include {
+	my($self, $output_ref, $match, $input) = @_;
+	return $self->_match_filename($input, \&_expand_file);
 }
 
 sub _match_define_script {
@@ -742,17 +758,22 @@ sub _undefine_macro_script {
 
 #------------------------------------------------------------------------------
 # load macro definitions from a file
-sub load_file {
-    my($self, $file) = @_;
+sub _load_file {
+    my($self, $output_ref, $file) = @_;
 
     # Treat loaded files as if wrapped in delimiters (only affects embedded
     # processing).
     my $in_embedded = $self->in_embedded; 
     $self->in_embedded(1); 
 
-    $self->expand_file($file, -noprint);
+    $self->_expand_file(undef, $file);		# never output
 
     $self->in_embedded($in_embedded); 
+}
+
+sub load_file {
+    my($self, $file) = @_;
+	$self->_load_file(undef, $file);
 }
 
 #------------------------------------------------------------------------------
@@ -761,41 +782,54 @@ sub load_file {
 # In an array context will return the file, e.g.
 # @expanded = $macro->expand_file($filename);
 # In a void context will print to the current output filehandle
-sub expand_file {
-    my($self, $file, $noprint) = @_;
+sub _expand_file {
+    my($self, $output_ref, $file) = @_;
 
-    # We need this because eval creates a scalar context.
-    my $wantarray = wantarray;
-
-    my @lines;
-
-	croak "Missing filename"            unless     $file; 
-	
 	# let Path::Tiny handle '~' processing
+	$file or croak "Missing filename";
 	$file = path($file);
 	
-	local $_;
-
-	open my $fh, $file or croak "Open '$file' failed: $!";
+	open(my $fh, $file) or $self->_error("Open '$file' failed: $!");
 	my $line_nr;
 	
-	while( <$fh> ) {
+	# define function to collect output
+	my $output;
+	if (! defined($output_ref)) {		
+		$output = sub {}; 
+	}
+	elsif (ref($output_ref) eq 'SCALAR') {
+		$output = sub { $$output_ref .= $_[0]; };
+	}
+	elsif (ref($output_ref) eq 'ARRAY') {
+		$output = sub { push @$output_ref, $_[0]; };
+	}
+	elsif (ref($output_ref) eq 'GLOB') {
+		$output = sub { print $_[0]; };
+	}
+	else {
+		croak("invalid output_ref");
+	}
+	
+	# read input
+	while(defined(my $line = <$fh>)) {
 		$line_nr++;
-		my $line = $self->expand( $_, $file, $line_nr );
-		next unless defined($line) && $line ne '';
-
-		if( $wantarray ) {
-			push @lines, $line;
-		}
-		else {
-			print $line unless $noprint;
-		}
+		$line = $self->expand($line, $file, $line_nr);
+		
+		$output->($line) if $line ne '';
 	}
 
-	close $fh or croak "Close '$file' failed: $!";
-
-    return @lines if $wantarray && ! $noprint;
+	close($fh) or croak "Close '$file' failed: $!";
 }
+
+sub expand_file {
+    my($self, $file) = @_;
+	my @lines;
+	
+	# build output destination
+	my $output_ref = wantarray ? \@lines : \*STDOUT;
+	$self->_expand_file($output_ref, $file);
+	return @lines if wantarray;
+}	
 
 #------------------------------------------------------------------------------
 # Wrappers for script/macro

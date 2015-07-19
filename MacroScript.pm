@@ -9,12 +9,13 @@ use Carp qw( carp croak );
 our @CARP_NOT = ( __PACKAGE__ );
 use Path::Tiny;
 
-use vars qw( $VERSION $WS_RE $NAME_RE );
+use vars qw( $VERSION $WS_RE $NAME_RE $COMMENT );
 $VERSION 	= '2.10_01'; 
 
 BEGIN {
 	$WS_RE 		= qr/ [\t\f\r ] /x;
-	$NAME_RE 	= qr/ [^\s\[\|\]\#\%]+ /x;		# name cannot contain blanks [ | ] # %
+	$NAME_RE 	= qr/ [^\s\[\|\]\#]+ /x;		# name cannot contain blanks [ | ] #
+	$COMMENT	= "%%";							# comment macro
 };
 
 #------------------------------------------------------------------------------
@@ -71,6 +72,7 @@ use Object::Tiny::RW
 	'in_embedded',				# true if inside embedded delimiters
 	'opendelim',				# open delimiter for embedded processing
 	'closedelim',				# close delimiter for embedded processing
+	'comment',					# True to create the %%[] comment macro
 	;
 
 #------------------------------------------------------------------------------
@@ -98,6 +100,13 @@ sub new {
 		closedelim	=> ':>',
 	);
 	$self->_update_regexp;
+	
+	# parse options: -comment
+	if ($opts{-comment}) {
+        $self->_define_standard_comment;
+		$self->comment(1);
+	}
+	delete $opts{-comment};
 	
 	# parse options: -embedded
 	if ($opts{-embedded} || defined($opts{-opendelim})) {
@@ -847,6 +856,13 @@ sub define_script {
 *undefine_script = \&_undefine_macro_script;
 
 #------------------------------------------------------------------------------
+# define the standard %% comment macro
+sub _define_standard_comment {
+    my($self) = @_;
+    $self->define_macro($COMMENT, '');
+}
+
+#------------------------------------------------------------------------------
 # deprecated method to define -macro, -script or -variable
 sub define {
     my($self, $which, $name, $body) = @_;
@@ -886,28 +902,12 @@ sub undefine {
 
 __END__
 
-	'comment',			# True to create the %%[] comment macro
 	
     # State temporaries used during processing
 	'in_case',			# Are we in a %CASE block? 0, 'SKIP' or 1.
 	;
 
 ### Public methods
-
-#------------------------------------------------------------------------------
-# Create new object, allow -options 
-sub new { # Class and object method
-	
-	# parse options: -comment
-	if ($opts{-comment}) {
-        $self->_define_standard_comment;
-		$self->comment(1);
-	}
-	delete $opts{-comment};
-	
-    $self;
-}
-
 
 #------------------------------------------------------------------------------
 # deprecated method to list all -macro, -script or -variable
@@ -1021,14 +1021,6 @@ sub list_variable {
 sub undefine_all_variable {
 	my($self) = @_;
 	$self->undefine_all(-variable);
-}
-
-
-#------------------------------------------------------------------------------
-# define the standard %% comment macro
-sub _define_standard_comment {
-    my($self) = @_;
-    $self->define_macro('%%', '');
 }
 
 

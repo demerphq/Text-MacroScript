@@ -62,36 +62,5 @@ $ms = new_ok('Text::MacroScript');
 eval {$ms->expand("%INCLUDE[$test2]")};
 check_error(__LINE__-1, $@, "Error at file - line 1: Open '$test2' failed: OS-ERROR\n");
 
-# test embedded
-for ([ [ -embedded => 1 ], 							"<:", ":>" ],
-     [ [ -opendelim => "<<", -closedelim => ">>" ], "<<", ">>" ],
-     [ [ -opendelim => "!!" ], 						"!!", "!!" ],
-	) {
-	my($args, $OPEN, $CLOSE) = @$_;
-	my @args = @$args;
-	note "@args $OPEN $CLOSE";
-	
-	$ms = new_ok('Text::MacroScript' => [ @args ]);
-	t_spew($test1, norm_nl(<<END));
-hello ${OPEN}%DEFINE hello
-Hallo
-%END_DEFINE${CLOSE}world ${OPEN}%DEFINE world
-Welt
-%END_DEFINE${CLOSE}${OPEN}hello world${CLOSE}
-END
-	@res = $ms->expand_file($test1);
-	is_deeply \@res, ["hello ", "world ", "Hallo\n Welt\n\n"];
-	path($test1)->remove;
-
-	$ms = new_ok('Text::MacroScript' => [ @args ]);
-	t_spew($test1, norm_nl(<<END));
-hello ${OPEN}%DEFINE hello [Hallo]${CLOSE}world${OPEN}%DEFINE world [Welt]${CLOSE}
-${OPEN}hello world${CLOSE}
-END
-	@res = $ms->expand_file($test1);
-	is_deeply \@res, ["hello world\n", "Hallo Welt\n"];
-	path($test1)->remove;
-}
-
 unlink($test1, $test2, path("~", $test1));
 done_testing;

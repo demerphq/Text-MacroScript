@@ -803,6 +803,79 @@ sub _undefine_macro_script {
 }
 
 #------------------------------------------------------------------------------
+# list_...
+# List objects to STDOUT or return to array, option -nameonly to list only name
+sub _list_line {
+	my($self, $define, $name, $body, $namesonly) = @_;
+	my $ret = "$define $name";
+	unless ($namesonly) {
+		if ($body =~ /\n/) {
+			chomp $body;
+			$ret .= "\n".$body."\n%END_DEFINE";
+		}
+		else {
+			$ret .= " [$body]";
+		}
+	}
+	$ret .= "\n";
+	$ret;
+}
+
+sub _list_lines {
+	my($self, $define, $items, $namesonly, $output_ref) = @_;
+
+	my @sorted_items = sort { $a->[0] cmp $b->[0] } @$items;
+	for (@sorted_items) {
+		my($name, $body) = @$_;
+		my $line = $self->_list_line($define, $name, $body, $namesonly);
+		if ($output_ref) {
+			push @$output_ref, $line;
+		}
+		else {
+			print $line;
+		}
+	}
+}
+
+sub list_variable {
+	my($self, $namesonly) = @_;
+	my @lines;
+	my @items;
+	
+	while (my($name, $body) = each %{ $self->variables }) {
+		push @items, [$name, $body];
+	}
+	
+	$self->_list_lines("%DEFINE_VARIABLE", \@items, $namesonly, 
+					   wantarray ? \@lines : undef );
+	return @lines if wantarray;
+}
+
+sub _list_macro_script {
+	my($self, $define, $is_script, $namesonly) = @_;
+	my @lines;
+	my @items;
+	
+	while (my($name, $body) = each %{ $self->macros }) {
+		push @items, [$name, $body] if !! $self->is_script->{$name} == !! $is_script;
+	}
+	
+	$self->_list_lines($define, \@items, $namesonly, 
+					   wantarray ? \@lines : undef );
+	return @lines if wantarray;
+}
+
+sub list_macro {
+	my($self, $namesonly) = @_;
+	$self->_list_macro_script("%DEFINE", 0, $namesonly);
+}
+
+sub list_script {
+	my($self, $namesonly) = @_;
+	$self->_list_macro_script("%DEFINE_SCRIPT", 1, $namesonly);
+}
+
+#------------------------------------------------------------------------------
 # load macro definitions from a file
 sub _load_file {
     my($self, $output_ref, $file) = @_;
@@ -998,6 +1071,24 @@ sub undefine_all {
 	}
 }
 
+sub list {
+    my($self, $which, $namesonly) = @_;
+	$which //= '';
+	
+	if ($which eq '-variable') {
+		$self->list_variable($namesonly);
+	}
+	elsif ($which eq '-macro') {
+		$self->list_macro($namesonly);
+	}
+	elsif ($which eq '-script') {
+		$self->list_script($namesonly);
+	}
+	else {
+		croak "$which method not supported";
+	}
+}
+
 1;
 
 __END__
@@ -1008,79 +1099,6 @@ __END__
 	;
 
 ### Public methods
-
-#------------------------------------------------------------------------------
-# deprecated method to list all -macro, -script or -variable
-sub list { # Object method.
-    my( $self, $which, $namesonly ) = @_;
-
-    my @lines;
-    local $_;
-
-    $which     = uc substr( $which, 1 );
-    my $script = '';
-    $script    = "_$which" unless $which eq 'MACRO';
-
-    my $array;
-
-    if( $which eq 'VARIABLE' ) {
-        $array = [ map { [ $_, $self->VARIABLE->{$_} ] } 
-                    sort keys %{$self->VARIABLE} ];
-    }
-    else {
-        $array = $self->{$which};
-    }
-
-    foreach( @{$array} ) {
-        my( $name, $body ) = @{$_};
-        my $line = "%DEFINE$script $name";
-
-        if( $body =~ /\n/o ) {
-            $line .= "\n$body%END_DEFINE\n" unless $namesonly;
-        }
-        else {
-            $line .= " [$body]\n" unless $namesonly;
-        }
-
-        if( wantarray ) {
-            push @lines, $line;
-        }
-        else {
-            print "$line\n";
-        }
-    }
-
-    @lines if wantarray;
-}
-
-
-#------------------------------------------------------------------------------
-# List all the macros to STDOUT or return to array, option -nameonly to list 
-# only name
-sub list_macro {
-	my($self, $namesonly) = @_;
-	$self->list(-macro, $namesonly);
-}
-
-
-
-#------------------------------------------------------------------------------
-# List all the scripts to STDOUT or return to array, option -nameonly to list 
-# only name
-sub list_script {
-	my($self, $namesonly) = @_;
-	$self->list(-script, $namesonly);
-}
-
-
-#------------------------------------------------------------------------------
-# List all the variables to STDOUT or return to array, option -nameonly to list 
-# only name
-sub list_variable {
-	my($self, $namesonly) = @_;
-	$self->list(-variable, $namesonly);
-}
-
 
 #------------------------------------------------------------------------------
 # similar to _expand(), but only expands text between the open and close delimiters
@@ -1445,15 +1463,14 @@ Text::MacroScript - A macro pre-processor with embedded perl capability
     $Macro->undefine_all_variable;
 
     # list()
+    @macros    = $Macro->list_macro;
+    @macros    = $Macro->list_macro( -namesonly );
 
-    @macros    = $Macro->list( -macro );
-    @macros    = $Macro->list( -macro, -namesonly );
+    @scripts   = $Macro->list_script;
+    @scripts   = $Macro->list_script( -namesonly );
 
-    @scripts   = $Macro->list( -script );
-    @scripts   = $Macro->list( -script, -namesonly );
-
-    @variables = $Macro->list( -variable );
-    @variables = $Macro->list( -variable, -namesonly );
+    @variables = $Macro->list_variable;
+    @variables = $Macro->list_variable( -namesonly );
 
     # load_file() - always treats the contents as within delimiters if we are
     # doing embedded processing.

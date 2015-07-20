@@ -98,6 +98,7 @@ sub new {
 		in_embedded	=> 0,
 		opendelim	=> '<:',
 		closedelim	=> ':>',
+		comment		=> 0,
 	);
 	$self->_update_regexp;
 	
@@ -237,6 +238,10 @@ sub _update_regexp {
 	push @actions_re, qr/ (?> ^ $WS_RE* \% DEFINE_VARIABLE
 												(?{ \&_match_define_variable }) ) /mx;
 
+	# %UNDEFINE_ALL_VARIABLE
+	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_ALL_VARIABLE \s*
+												(?{ \&_match_undefine_all_variable }) ) /mx;
+
 	# %UNDEFINE_VARIABLE
 	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_VARIABLE
 												(?{ \&_match_undefine_variable }) ) /mx;
@@ -245,6 +250,10 @@ sub _update_regexp {
 	push @actions_re, qr/ (?> ^ $WS_RE* \% DEFINE_SCRIPT
 												(?{ \&_match_define_script }) ) /mx;
 	
+	# %UNDEFINE_ALL_SCRIPT
+	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_ALL_SCRIPT \s*
+												(?{ \&_match_undefine_all_script }) ) /mx;
+
 	# %UNDEFINE_SCRIPT
 	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_SCRIPT
 												(?{ \&_match_undefine_macro_script }) ) /mx;
@@ -253,6 +262,10 @@ sub _update_regexp {
 	push @actions_re, qr/ (?> ^ $WS_RE* \% DEFINE
 												(?{ \&_match_define_macro }) ) /mx;
 	
+	# %UNDEFINE_ALL
+	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_ALL \s*
+												(?{ \&_match_undefine_all_macro }) ) /mx;
+
 	# %UNDEFINE
 	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE
 												(?{ \&_match_undefine_macro_script }) ) /mx;
@@ -347,6 +360,14 @@ sub _match_undefine_variable {
 	return $input;
 }
 
+sub _match_undefine_all_variable {
+	my($self, $output_ref, $match, $input) = @_;
+
+	$self->undefine_all_variable;
+
+	return $input;
+}
+
 sub _match_define_macro_script {
 	my($self, $output_ref, $match, $input, $is_script) = @_;
 	
@@ -434,6 +455,22 @@ sub _match_undefine_macro_script {
 	
 	my $name = $self->_match_undefine( \$input );
 	$self->_undefine_macro_script($name);
+
+	return $input;
+}
+
+sub _match_undefine_all_macro {
+	my($self, $output_ref, $match, $input) = @_;
+	
+	$self->undefine_all_macro;
+
+	return $input;
+}
+
+sub _match_undefine_all_script {
+	my($self, $output_ref, $match, $input) = @_;
+	
+	$self->undefine_all_script;
 
 	return $input;
 }
@@ -863,6 +900,51 @@ sub _define_standard_comment {
 }
 
 #------------------------------------------------------------------------------
+# Undefine all ...
+sub _undefine_all_macro_script {
+	my($self, $is_script) = @_;
+
+	# delete all keys first and update regexp at the end
+	# do not call _undefine_macro_script to avoid recomputing the regexp
+	# after each deleted macro
+	for my $name (keys %{ $self->macros }) {
+		if ( !! $is_script == !! $self->is_script->{$name} ) {
+			delete $self->macros->{$name};
+			delete $self->is_script->{$name};
+			delete $self->actions->{$name.'['};
+			delete $self->actions->{$name};
+		}
+	}
+	$self->_update_regexp;
+
+	# redefine comment macro
+	$self->_define_standard_comment if $self->comment;
+}
+
+sub undefine_all_macro {
+	my($self) = @_;
+	$self->_undefine_all_macro_script(0);
+}
+
+sub undefine_all_script {
+	my($self) = @_;
+	$self->_undefine_all_macro_script(1);
+}
+
+sub undefine_all_variable {
+	my($self) = @_;
+
+	# delete all keys first and update regexp at the end
+	# do not call _undefine_macro_script to avoid recomputing the regexp
+	# after each deleted macro
+	for my $name (keys %{ $self->variables }) {
+		delete $self->variables->{$name};
+		delete $self->actions->{'#'.$name};
+	}
+	$self->_update_regexp;
+}
+
+#------------------------------------------------------------------------------
 # deprecated method to define -macro, -script or -variable
 sub define {
     my($self, $which, $name, $body) = @_;
@@ -892,6 +974,24 @@ sub undefine {
 	}
 	elsif ($which eq '-script') {
 		$self->undefine_script($name);
+	}
+	else {
+		croak "$which method not supported";
+	}
+}
+
+sub undefine_all {
+    my($self, $which) = @_;
+	$which //= '';
+	
+	if ($which eq '-variable') {
+		$self->undefine_all_variable;
+	}
+	elsif ($which eq '-macro') {
+		$self->undefine_all_macro;
+	}
+	elsif ($which eq '-script') {
+		$self->undefine_all_script;
 	}
 	else {
 		croak "$which method not supported";
@@ -955,25 +1055,6 @@ sub list { # Object method.
 
 
 #------------------------------------------------------------------------------
-# deprecated method to undefine all -macro, -script or -variable
-sub undefine_all { # Object method.
-    my( $self, $which ) = @_;
-
-    $which = uc substr( $which, 1 );
-
-    if( $which eq 'VARIABLE' ) {
-        %{$self->{$which}} = ();
-    }
-    else {
-        @{$self->{$which}} = ();
-    }
-
-	# redefine comment macro
-	$self->_define_standard_comment if $self->comment;
-}
-
-
-#------------------------------------------------------------------------------
 # List all the macros to STDOUT or return to array, option -nameonly to list 
 # only name
 sub list_macro {
@@ -981,13 +1062,6 @@ sub list_macro {
 	$self->list(-macro, $namesonly);
 }
 
-
-#------------------------------------------------------------------------------
-# Undefine all macros
-sub undefine_all_macro {
-	my($self) = @_;
-	$self->undefine_all(-macro);
-}
 
 
 #------------------------------------------------------------------------------
@@ -1000,27 +1074,11 @@ sub list_script {
 
 
 #------------------------------------------------------------------------------
-# Undefine all scripts
-sub undefine_all_script {
-	my($self) = @_;
-	$self->undefine_all(-script);
-}
-
-
-#------------------------------------------------------------------------------
 # List all the variables to STDOUT or return to array, option -nameonly to list 
 # only name
 sub list_variable {
 	my($self, $namesonly) = @_;
 	$self->list(-variable, $namesonly);
-}
-
-
-#------------------------------------------------------------------------------
-# Undefine all variables
-sub undefine_all_variable {
-	my($self) = @_;
-	$self->undefine_all(-variable);
 }
 
 
@@ -1145,44 +1203,6 @@ sub _expand { # Object method.
 		   /msox;
 
 		$self->{cur_define} .= $_;
-
-		$_ = '';
-	}
-	elsif( /^\%UNDEFINE(?:_(SCRIPT|VARIABLE))?\s+([^][\s]+)/mso ) {
-		# Undefining a macro, script or variable
-		my $which = $1 || 'MACRO';
-
-		carp "Cannot undefine non-existent $which $2 $where" 
-		unless $self->_remove_element( $which, $2 ); 
- 
-		$_ = '';
-	}
-	elsif( /^\%UNDEFINE_ALL(?:_(SCRIPT|VARIABLE))?/mso ) {
-		# Undefining all macros or scripts
-		my $which = "-".lc($1 || 'MACRO');
-		$self->undefine_all($which);
-
-		$_ = '';
-	}
-	elsif( /^\%DEFINE(?:_(SCRIPT|VARIABLE))?\s+([^][\s]+)\s*\[(.*?)\]/mso ) {
-		# Defining a single-line macro, script or variable
-		my $which = $1 || 'MACRO';
-
-		$self->_insert_element( $which, $2, $self->_expand_variable( $3 || '' ) );
-
-		$_ = '';
-	}
-	elsif( /^\%DEFINE(?:_(SCRIPT))?\s+([^][\s]+)/mso ) {
-		# Preparing to define a multi-line macro or script (we don't permit
-		# multi-line variables)
-		$self->cur_name($2);
-		$self->cur_define('');
-		if (defined $1) {
-			$self->in_script(1);
-		}
-		else {
-			$self->in_macro(1);
-		}
 
 		$_ = '';
 	}
@@ -1420,9 +1440,9 @@ Text::MacroScript - A macro pre-processor with embedded perl capability
     $Macro->undefine_variable( $variablename );
 
     # undefine_all()
-    $Macro->undefine( -macro );
-    $Macro->undefine( -script );
-    $Macro->undefine( -variable );
+    $Macro->undefine_all_macro;
+    $Macro->undefine_all_script;
+    $Macro->undefine_all_variable;
 
     # list()
 

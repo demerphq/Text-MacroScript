@@ -54,5 +54,19 @@ $ms = new_ok('Text::MacroScript');
 eval {$ms->expand("%LOAD[$test3]")};
 check_error(__LINE__-1, $@, "Error at file - line 1: Open '$test3' failed: OS-ERROR\n");
 
+# test error reporting line with %LOAD
+t_spew($test1, norm_nl(<<END));
+%LOAD[$test2]
+%DEFINE
+END
+
+t_spew($test2, norm_nl(<<'END'));
+%DEFINE A [1]
+END
+
+$ms = new_ok('Text::MacroScript');
+eval {$ms->load_file($test1)};
+check_error(__LINE__-1, $@, "Error at file $test1 line 2: Expected NAME\n");
+
 ok unlink($test1, $test2, $test3);
 done_testing;

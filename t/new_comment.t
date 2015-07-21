@@ -25,13 +25,13 @@ $ms->define_macro("%%", "");
 is $ms->expand("hello%%[this|is|a|comment]world\n"), "helloworld\n";
 
 # %CASE
-#$ms = new_ok('Text::MacroScript');
-#is $ms->expand("hello\n"), 		"hello\n";
-#is $ms->expand("%CASE[0]\n"),	"";
-#is $ms->expand("this is\n"),	"";
-#is $ms->expand("a comment\n"),	"";
-#is $ms->expand("%END_CASE\n"),	"";
-#is $ms->expand("world\n"), 		"world\n";
+$ms = new_ok('Text::MacroScript');
+is $ms->expand("hello\n"), 		"hello\n";
+is $ms->expand("%CASE[0]\n"),	"";
+is $ms->expand("this is\n"),	"";
+is $ms->expand("a comment\n"),	"";
+is $ms->expand("%END_CASE\n"),	"";
+is $ms->expand("world\n"), 		"world\n";
 
 # -comment and %UNDEFINE_ALL
 $ms = new_ok('Text::MacroScript' => [ -comment => 1 ]);

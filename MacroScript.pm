@@ -34,10 +34,13 @@ use enum qw( CTX_ARGS=1 CTX_TEXT );
 		# collecting parameters
 		'args',					# current collected arguments
 		'open_parens',			# number of open parenthesis
+		
+		# end text collection
+		'end_text_re',			# regexp to end _parse_collect_text()
 	;
 	
 	sub new {
-		my($class, $type, $start_line_nr, $commit_func) = @_;
+		my($class, $type, $start_line_nr, $commit_func, $end_text_re) = @_;
 
 		my $self = $class->SUPER::new(
 			type			=> $type,
@@ -46,6 +49,8 @@ use enum qw( CTX_ARGS=1 CTX_TEXT );
 			
 			args 			=> [],
 			open_parens		=> 1,		# init at 1, as first '[' is already matched
+			
+			end_text_re		=> $end_text_re,
 		);
 		return $self;
 	}
@@ -169,7 +174,7 @@ sub _error {
 #------------------------------------------------------------------------------
 # contexts
 sub _push_context {
-	my($self, $type, $commit_func) = @_;
+	my($self, $type, $commit_func, $end_text_re) = @_;
 	
 	my $previous_parse = $self->parse_func;
 	my $context = Text::MacroScript::Context->new($type, $self->line_nr, 
@@ -186,7 +191,8 @@ sub _push_context {
 					
 					# call commit function with input arguments
 					$commit_func->($output_ref, @args);
-				});
+				},
+				$end_text_re);
 	push @{$self->context}, $context;
 }
 
@@ -270,6 +276,10 @@ sub _update_regexp {
 	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE
 												(?{ \&_match_undefine_macro_script }) ) /mx;
 
+	# %CASE
+	push @actions_re, qr/ (?> ^ $WS_RE* \% CASE
+												(?{ \&_match_case }) ) /mx;
+
 	# %LOAD
 	push @actions_re, qr/ (?> ^ $WS_RE* \% LOAD
 												(?{ \&_match_load }) ) /mx;
@@ -329,10 +339,11 @@ sub _match_define_variable {
 	# create a new context
 	$self->_push_context(CTX_ARGS, 
 			sub {
-				my($output_ref, @args) = @_;
+				my($rt_output_ref, @args) = @_;
 				@args == 1 or $self->_error("Only one argument expected");
 				$self->define_variable($name, $args[0]);
-			});
+			},
+			undef);
 	
 	# change parser
 	$self->parse_func( \&_parse_args );
@@ -384,10 +395,11 @@ sub _match_define_macro_script {
 		# create a new context
 		$self->_push_context(CTX_ARGS, 
 				sub {
-					my($output_ref, @args) = @_;
+					my($rt_output_ref, @args) = @_;
 					@args == 1 or $self->_error("Only one argument expected");
 					$self->_define_macro_script($name, $args[0], $is_script);
-				});
+				},
+				undef);
 		
 		# change parser
 		$self->parse_func( \&_parse_args );
@@ -398,9 +410,10 @@ sub _match_define_macro_script {
 		# collect text up to %END_DEFINE
 		$self->_push_context(CTX_TEXT, 
 				sub {
-					my($output_ref, $text) = @_;
+					my($rt_output_ref, $text) = @_;
 					$self->_define_macro_script($name, $text, $is_script);
-				});
+				},
+				qr/ ^ $WS_RE* \% END_DEFINE \s* /mx);
 		
 		# change parser
 		$self->parse_func( \&_parse_collect_text );
@@ -412,6 +425,48 @@ sub _match_define_macro_script {
 sub _match_define_macro {
 	my($self, $output_ref, $match, $input) = @_;
 	return $self->_match_define_macro_script($output_ref, $match, $input, 0);
+}
+
+sub _match_case {
+	my($self, $output_ref, $match, $input) = @_;
+	
+	$input =~ / $WS_RE* \[ /x 
+		or $self->_error("Expected [EXPR]");
+	$input = $';
+	
+	# create a new context
+	$self->_push_context(CTX_ARGS, 
+			sub {
+				my($rt_output_ref, @args) = @_;
+				@args == 1 or $self->_error("Only one argument expected");
+				
+				# compute expression
+				my $case_arg = $self->_eval_expression($args[0]);
+				
+				# collect text up to next %CASE or %END_CASE
+				# or %CASE - in this case keep it in input, to be matched next
+				$self->_push_context(CTX_TEXT,
+						sub {
+							my($rt_output_ref, @args) = @_;
+							@args == 1 or $self->_error("Only one argument expected");
+							
+							if ($case_arg) {
+								my $body = $args[0];
+								$body =~ s/^\s+//;
+								$$rt_output_ref .= $self->expand($body);
+							}
+						},
+						qr/     ^ $WS_RE* \% END_CASE \s |
+						    (?= ^ $WS_RE* \% CASE ) /mx);
+							
+				$self->parse_func( \&_parse_collect_text );
+			},
+			undef);
+	
+	# change parser
+	$self->parse_func( \&_parse_args );
+	
+	return $input;
 }
 
 sub _match_filename {
@@ -427,7 +482,8 @@ sub _match_filename {
 				my($rt_output_ref, @args) = @_;
 				@args == 1 or $self->_error("Only one argument expected");
 				$self->$func($rt_output_ref, $args[0]);
-			});
+			},
+			undef);
 	
 	# change parser
 	$self->parse_func( \&_parse_args );
@@ -658,7 +714,8 @@ sub _parse_collect_text {
 	
 	my $context = $self->_last_context_assert(CTX_TEXT);
 	@{ $context->args } or push @{ $context->args }, '';
-	if ($input =~ / ^ $WS_RE* \% END_DEFINE $WS_RE* /mx) {
+	my $end_text_re = $context->end_text_re;
+	if ($input =~ /$end_text_re/) {
 		$context->args->[-1] .= $`;
 		$input = $';
 		$context->commit_func->($output_ref);
@@ -698,6 +755,8 @@ sub _eval_expression {
 	# expand any macro calls in the expression
 	my $value = $self->_expand($expression);
 	
+	my %Var = %{ $self->variables };	# to be used in script body
+
 	# try to eval as a perl expression, drop value on failure
 	{ 
 		no warnings;
@@ -706,6 +765,9 @@ sub _eval_expression {
 			$value = $eval_result;
 		}
 	}
+
+	%{ $self->variables } = %Var;		# update any changed variables
+	
 	return $value;
 }
 	
@@ -744,7 +806,8 @@ sub _macro_script_collect_args {
 			sub {
 				my($rt_output_ref, @args) = @_;
 				$self->_expand_macro_script($name, \@args, $rt_output_ref);
-			});
+			},
+			undef);
 	
 	# change parser
 	$self->parse_func( \&_parse_args );

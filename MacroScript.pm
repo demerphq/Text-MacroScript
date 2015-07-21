@@ -37,10 +37,11 @@ use enum qw( CTX_ARGS=1 CTX_TEXT );
 		
 		# end text collection
 		'end_text_re',			# regexp to end _parse_collect_text()
+		'eat_blanks',			# eat blanks after end of []
 	;
 	
 	sub new {
-		my($class, $type, $start_line_nr, $commit_func, $end_text_re) = @_;
+		my($class, $type, $start_line_nr, $commit_func, $end_text_re, $eat_blanks) = @_;
 
 		my $self = $class->SUPER::new(
 			type			=> $type,
@@ -51,6 +52,7 @@ use enum qw( CTX_ARGS=1 CTX_TEXT );
 			open_parens		=> 1,		# init at 1, as first '[' is already matched
 			
 			end_text_re		=> $end_text_re,
+			eat_blanks		=> $eat_blanks,
 		);
 		return $self;
 	}
@@ -174,7 +176,7 @@ sub _error {
 #------------------------------------------------------------------------------
 # contexts
 sub _push_context {
-	my($self, $type, $commit_func, $end_text_re) = @_;
+	my($self, $type, $commit_func, $end_text_re, $eat_blanks) = @_;
 	
 	my $previous_parse = $self->parse_func;
 	my $context = Text::MacroScript::Context->new($type, $self->line_nr, 
@@ -192,7 +194,8 @@ sub _push_context {
 					# call commit function with input arguments
 					$commit_func->($output_ref, @args);
 				},
-				$end_text_re);
+				$end_text_re,
+				$eat_blanks);
 	push @{$self->context}, $context;
 }
 
@@ -347,7 +350,8 @@ sub _match_define_variable {
 				@args == 1 or $self->_error("Only one argument expected");
 				$self->define_variable($name, $args[0]);
 			},
-			undef);
+			undef,
+			1);
 	
 	# change parser
 	$self->parse_func( \&_parse_args );
@@ -358,7 +362,7 @@ sub _match_define_variable {
 sub _match_undefine {
 	my($self, $input_ref) = @_;
 	
-	$$input_ref =~ / $WS_RE* ( $NAME_RE ) $WS_RE* /x 
+	$$input_ref =~ / $WS_RE* ( $NAME_RE ) \s* /x 
 		or $self->_error("Expected NAME");
 	my $name = $1;
 	$$input_ref = $';
@@ -403,7 +407,8 @@ sub _match_define_macro_script {
 					@args == 1 or $self->_error("Only one argument expected");
 					$self->_define_macro_script($name, $args[0], $is_script);
 				},
-				undef);
+				undef,
+				1);
 		
 		# change parser
 		$self->parse_func( \&_parse_args );
@@ -417,7 +422,8 @@ sub _match_define_macro_script {
 					my($rt_output_ref, $text) = @_;
 					$self->_define_macro_script($name, $text, $is_script);
 				},
-				qr/ ^ $WS_RE* \% END_DEFINE \s* /mx);
+				qr/ ^ $WS_RE* \% END_DEFINE \s* /mx,
+				0);
 		
 		# change parser
 		$self->parse_func( \&_parse_collect_text );
@@ -456,16 +462,18 @@ sub _match_case {
 							
 							if ($case_arg) {
 								my $body = $args[0];
-								$body =~ s/^\s+//;
+								$body =~ s/^\s+//;		# eat newline
 								$$rt_output_ref .= $self->expand($body);
 							}
 						},
-						qr/     ^ $WS_RE* \% END_CASE \s |
-						    (?= ^ $WS_RE* \% CASE ) /mx);
+						qr/     ^ $WS_RE* \% END_CASE \s* |
+						    (?= ^ $WS_RE* \% CASE ) /mx,
+						0);
 							
 				$self->parse_func( \&_parse_collect_text );
 			},
-			undef);
+			undef,
+			1);
 	
 	# change parser
 	$self->parse_func( \&_parse_args );
@@ -487,7 +495,8 @@ sub _match_filename {
 				@args == 1 or $self->_error("Only one argument expected");
 				$self->$func($rt_output_ref, $args[0]);
 			},
-			undef);
+			undef,
+			1);
 	
 	# change parser
 	$self->parse_func( \&_parse_args );
@@ -660,9 +669,9 @@ sub _parse_args {
 		if ( $input =~ /
 				(.*?)
 				(?| (?> \\ ( [\[\]\|] ) 	(?{ \&_parse_args_escape }) )
-				  | (?> ( \[ )				(?{ \&_parse_args_open }) )
-				  | (?> ( \| )				(?{ \&_parse_args_separator }) )
-				  | (?> ( \] )				(?{ \&_parse_args_close }) )
+				  | (?> ( \[ ) 				(?{ \&_parse_args_open }) )
+				  | (?> ( \| ) 				(?{ \&_parse_args_separator }) )
+				  | (?> ( \] ) 				(?{ \&_parse_args_close }) )
 				) 
 				/sx ) {
 			my $action = $^R;
@@ -679,6 +688,7 @@ sub _parse_args {
 	# check for end of parsing
 	if ( $context->open_parens == 0 ) {
 		$context->commit_func->($output_ref);
+		$input =~ s/^\s+// if $context->eat_blanks;
 	}
 	
 	return $input;
@@ -830,7 +840,8 @@ sub _macro_script_collect_args {
 				my($rt_output_ref, @args) = @_;
 				$self->_expand_macro_script($name, \@args, $rt_output_ref);
 			},
-			undef);
+			undef,
+			0);
 	
 	# change parser
 	$self->parse_func( \&_parse_args );

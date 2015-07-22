@@ -288,6 +288,10 @@ sub _update_regexp {
 	push @actions_re, qr/ (?> ^ $WS_RE* \% INCLUDE
 												(?{ \&_match_include }) ) /mx;
 
+	# %REQUIRE
+	push @actions_re, qr/ (?> ^ $WS_RE* \% REQUIRE
+												(?{ \&_match_require }) ) /mx;
+
 	# concatenate operator
 	push @actions_re, qr/ (?> $WS_RE* \# \# $WS_RE*
 												(?{ \&_match_concat }) ) /mx;
@@ -499,6 +503,15 @@ sub _match_load {
 sub _match_include {
 	my($self, $output_ref, $match, $input) = @_;
 	return $self->_match_filename($input, \&_expand_file);
+}
+
+sub _match_require {
+	my($self, $output_ref, $match, $input) = @_;
+	return $self->_match_filename($input, 
+			sub {
+				my($self, $output_ref, $file) = @_;
+				$self->_eval_expression("require '$file'");
+			});
 }
 
 sub _match_define_script {
@@ -739,7 +752,7 @@ sub define_variable {
 	$self->actions->{'#'.$name} = \&_expand_variable;
 	$self->_update_regexp;
 
-	$self->variables->{$name} = $self->_eval_expression($value);
+	$self->variables->{$name} = $self->_eval_expression($value, -ignore_errors);
 }
 
 sub _expand_variable {
@@ -750,7 +763,10 @@ sub _expand_variable {
 };
 
 sub _eval_expression {
-	my($self, $expression) = @_;
+	my($self, $expression, $ignore_errors, @args) = @_;
+	my @save_args = @{ $self->args };
+	$self->args( \@args );				# set arguments for this call
+	my @Param = @args;					# to be used in script body
 	
 	# expand any macro calls in the expression
 	my $value = $self->_expand($expression);
@@ -764,9 +780,16 @@ sub _eval_expression {
 		if (! $@) {
 			$value = $eval_result;
 		}
+		elsif (! $ignore_errors) {
+			my $error = $@;
+			$error =~ s/ at \(eval.*//;
+			$self->_error("Eval error: $error");
+		}
 	}
 
 	%{ $self->variables } = %Var;		# update any changed variables
+	
+	$self->args( \@save_args );			# restore previous level args
 	
 	return $value;
 }
@@ -826,26 +849,18 @@ sub _macro_script_no_args {
 
 sub _expand_macro_script {
 	my($self, $name, $args, $output_ref) = @_;
-	my @save_args = @{ $self->args };
-	my @Param = @$args;					# to be used in script body
-	my %Var = %{ $self->variables };	# to be used in script body
-	$self->args( $args );				# set arguments for this call
-	
-	my $expanded_body = $self->_expand( $self->macros->{$name} );
 	
 	if ($self->is_script->{$name}) {
-		my $evaled_body = eval $expanded_body;
-		$self->_error("Eval error: $@") if $@;
-
-		%{ $self->variables } = %Var;		# update any changed variables
-		
-		$$output_ref .= $evaled_body;
+		$$output_ref .= $self->_eval_expression( $self->macros->{$name}, 0, @$args );
 	}
 	else {
-		$$output_ref .= $expanded_body;
+		my @save_args = @{ $self->args };
+		$self->args( $args );				# set arguments for this call
+
+		$$output_ref .= $self->_expand( $self->macros->{$name} );
+		
+		$self->args( \@save_args );			# restore previous level args
 	}
-	
-	$self->args( \@save_args );			# restore previous level args
 }
 
 #------------------------------------------------------------------------------

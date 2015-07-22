@@ -5,11 +5,12 @@
 
 use strict;
 use warnings;
-use Test::More;
 use Capture::Tiny 'capture';
 use Path::Tiny;
 use Time::HiRes 'usleep';
 use Path::Tiny;
+use Test::Differences;
+use Test::More;
 
 use_ok 'Text::MacroScript';
 require_ok 't/mytests.pl';

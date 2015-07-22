@@ -6,6 +6,7 @@
 use strict;
 use warnings;
 use Capture::Tiny 'capture';
+use Test::Differences;
 use Test::More;
 
 my $ms;
@@ -37,11 +38,12 @@ diag 'Issue #41: Macro/script arguments do not nest';
 is $ms->expand("ADD[1|2] ADD1[3] ADD2[4] ADD3[5]"), "3 4 6 8";
 
 $ms->define_variable( N3 => 3 );
-$ms->define( -script => SUM => 'my $s=0;for(@Param){$s+=$_};$s' );
-is $ms->expand("N1 #N1 N2 #N2 N3 #N3"),	"N1 #N1 N2 #N2 N3 #N3";
+$ms->define( -script => SUM => 'my $s=0;for(@Param){$s+=$_||0};$s' );
+#is $ms->expand("N1 #N1 N2 #N2 N3 #N3"),	"N1 #N1 N2 #N2 N3 #N3";
+is $ms->expand("N1 #N1 N2 #N2 N3 #N3"),	"N1 1 N2 2 N3 3";
 
 is $ms->expand("%DEFINE_SCRIPT SHOW\n"),	"";
-is $ms->expand("join(',', \@Param, #N1||0, #N2||0, #N3||0, ".
+is $ms->expand("join(',', \@Param, eval('#N1')||0, eval('#N2')||0, eval('#N3')||0, ".
 			   "\$Var{N1}||0, \$Var{N2}||0, \$Var{N3}||0 )\n"),	"";
 is $ms->expand("%END_DEFINE\n"),			"";
 
@@ -84,10 +86,8 @@ is $ms->expand('%UNDEFINE_SCRIPT ADD3'), "";
 
 is $ms->expand("ADD[1|2] ADD1[3] ADD2[4] ADD3[5]"), "ADD[1|2] ADD1[3] ADD2[4] ADD3[5]";
 
-diag 'Issue #5: Syntax SUM[] should be accepted to call script without parameters';
-#is $ms->expand("SUM[]"),	"0";
-
-is $ms->expand("SUM"),	"0";
+is $ms->expand("SUM"),		"0";
+is $ms->expand("SUM[]"),	"0";
 is $ms->expand("SUM[1]"),	"1";
 is $ms->expand("SUM[1|2]"),	"3";
 is $ms->expand("SUM[1|2|3]"),"6";
@@ -120,8 +120,8 @@ $ms = new_ok('Text::MacroScript' => [
 my @output;
 
 @output = $ms->list(-script, -namesonly);
-is_deeply \@output, ["%DEFINE_SCRIPT N1", 
-					 "%DEFINE_SCRIPT N2"];
+is_deeply \@output, ["%DEFINE_SCRIPT N1\n", 
+					 "%DEFINE_SCRIPT N2\n"];
 
 @output = $ms->list(-script);
 is_deeply \@output, ["%DEFINE_SCRIPT N1 [1]\n", 
@@ -134,14 +134,14 @@ is $err, "";
 is_deeply \@res, [];
 
 ($out,$err,@res) = capture { void { $ms->list(-script); } };
-eq_or_diff $out, "%DEFINE_SCRIPT N1 [1]\n\n".
-				 "%DEFINE_SCRIPT N2 [2]\n\n";
+eq_or_diff $out, "%DEFINE_SCRIPT N1 [1]\n".
+				 "%DEFINE_SCRIPT N2 [2]\n";
 is $err, "";
 is_deeply \@res, [];
 
 @output = $ms->list_script(-namesonly);
-is_deeply \@output, ["%DEFINE_SCRIPT N1", 
-					 "%DEFINE_SCRIPT N2"];
+is_deeply \@output, ["%DEFINE_SCRIPT N1\n", 
+					 "%DEFINE_SCRIPT N2\n"];
 
 @output = $ms->list_script();
 is_deeply \@output, ["%DEFINE_SCRIPT N1 [1]\n", 
@@ -154,8 +154,8 @@ is $err, "";
 is_deeply \@res, [];
 
 ($out,$err,@res) = capture { void { $ms->list_script(); } };
-eq_or_diff $out, "%DEFINE_SCRIPT N1 [1]\n\n".
-				 "%DEFINE_SCRIPT N2 [2]\n\n";
+eq_or_diff $out, "%DEFINE_SCRIPT N1 [1]\n".
+				 "%DEFINE_SCRIPT N2 [2]\n";
 is $err, "";
 is_deeply \@res, [];
 
@@ -191,7 +191,7 @@ $ms = new_ok('Text::MacroScript' => [
 					[ "Z2"		=> "'lo'" ],
 				]]);
 is $ms->expand("hello Z1 Z2\n"),	 	"Hallo hel lo\n";
-#is $ms->expand("Z1Z2\n"),	 			"Hallo\n";
+is $ms->expand("Z1Z2\n"),	 			"hello\n";
 $ms = new_ok('Text::MacroScript' => [ 
 				-script => [ 
 					[ "ZZZZZ1"	=> "'hel'" ],
@@ -199,21 +199,20 @@ $ms = new_ok('Text::MacroScript' => [
 					[ "hello"	=> "'Hallo'" ],
 				]]);
 is $ms->expand("hello ZZZZZ1 ZZZZZ2\n"),"Hallo hel lo\n";
-is $ms->expand("ZZZZZ1ZZZZZ2\n"),		"Hallo\n";
+is $ms->expand("ZZZZZ1ZZZZZ2\n"),		"hello\n";
 
 #------------------------------------------------------------------------------
 # scripts with regexp-special-chars
 $ms = new_ok('Text::MacroScript');
-is $ms->expand("%DEFINE_SCRIPT * ['*']\n"),"";
-is $ms->expand("2*4\n"),			"2*4\n";
+is $ms->expand("%DEFINE_SCRIPT MUL ['*']\n"),"";
+is $ms->expand("2MUL4\n"), "2*4\n";
 
 #------------------------------------------------------------------------------
 # scripts with arguments
 $ms = new_ok('Text::MacroScript');
-diag 'Issue #3: Cannot catch error "missing parameter or unescaped # in MACRO"';
-#is $ms->expand("%DEFINE_SCRIPT * [#0+#1+#2+#3+#4+#5+#6+#7+#8+#9+#10]\n"),	"";
-#eval {$ms->expand("*\n")};
-#like $@, qr/missing or unescaped \# in MACRO/;
+is $ms->expand("%DEFINE_SCRIPT * [#0+#1+#2+#3+#4+#5+#6+#7+#8+#9+#10]\n"),	"";
+eval {$ms->expand("*\n")};
+is $@, "Error at file - line 1: Missing parameters\n";
 is $ms->expand("%DEFINE_SCRIPT * [#0+#1]"),	"";
 is $ms->expand("*[0|1]"),				"1";
 is $ms->expand("*[ 0 | 1 ]"),			"1";
@@ -240,10 +239,9 @@ is $ms->expand("2*4\n"),			"2#04\n";
 
 #------------------------------------------------------------------------------
 # expand variables in scripts
-diag 'Issue #37: Variables should be expanded in all input text, not only in macro scripts';
 $ms = new_ok('Text::MacroScript');
 $ms->define_variable(YEAR => 2015);
 $ms->define(-script => SHOW => '"\\#YEAR = #YEAR"');
-#is $ms->expand("SHOW"), "#YEAR = 2015";
+is $ms->expand("SHOW"), "#YEAR = 2015";
 
 done_testing;

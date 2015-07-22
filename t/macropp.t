@@ -5,9 +5,10 @@
 
 use strict;
 use warnings;
-use Test::More;
 use Capture::Tiny 'capture';
 use Path::Tiny;
+use Test::Differences;
+use Test::More;
 
 my($cmd,$out,$err,$res,$test1,$test2);
 
@@ -21,7 +22,7 @@ path($macros)->spew(norm_nl(<<END));
 %%[Silly scripts]
 %DEFINE Hello [Hallo]
 %DEFINE_VARIABLE name [Welt]
-%DEFINE_SCRIPT World[#name]
+%DEFINE_SCRIPT World['#name']
 END
 
 $test1 = "test1~";
@@ -55,18 +56,18 @@ t_macro("--file $macros $test1", "Hallo Welt\n");
 
 #------------------------------------------------------------------------------
 # -m, --macro
-t_macro("-f $macros -m     ", "%DEFINE Hello [Hallo]\n\n");
-t_macro("-f $macros --macro", "%DEFINE Hello [Hallo]\n\n");
+t_macro("-f $macros -m     ", "%DEFINE Hello [Hallo]\n");
+t_macro("-f $macros --macro", "%DEFINE Hello [Hallo]\n");
 
 #------------------------------------------------------------------------------
 # -s, --script
-t_macro("-f $macros -s      ", "%DEFINE_SCRIPT World [\$Var{\"name\"}]\n\n");
-t_macro("-f $macros --script", "%DEFINE_SCRIPT World [\$Var{\"name\"}]\n\n");
+t_macro("-f $macros -s      ", "%DEFINE_SCRIPT World ['#name']\n");
+t_macro("-f $macros --script", "%DEFINE_SCRIPT World ['#name']\n");
 
 #------------------------------------------------------------------------------
 # -v, --variable
-t_macro("-f $macros -v        ", "%DEFINE_VARIABLE name [Welt]\n\n");
-t_macro("-f $macros --variable", "%DEFINE_VARIABLE name [Welt]\n\n");
+t_macro("-f $macros -v        ", "%DEFINE_VARIABLE name [Welt]\n");
+t_macro("-f $macros --variable", "%DEFINE_VARIABLE name [Welt]\n");
 
 #------------------------------------------------------------------------------
 # -n, --name

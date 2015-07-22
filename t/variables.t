@@ -6,6 +6,7 @@
 use strict;
 use warnings;
 use Capture::Tiny 'capture';
+use Test::Differences;
 use Test::More;
 
 use_ok 'Text::MacroScript';
@@ -20,9 +21,6 @@ sub void(&) { $_[0]->(); () }
 # script to SHOW variables
 my @show;
 for (1..5) {
-	diag 'Issue #38: Variables with # syntax not parsed by $Macro->define()';
-	diag 'Issue #39: Undefined #var use causes perl error message without location';
-	#push @show, "\"N$_ = #N$_ = \$Var{N$_}\"";
 	push @show, "\"N$_=\".(defined(\$Var{N$_}) ? \"\$Var{N$_}=\$Var{N$_}\" : '')";
 }
 my $show = join(".', '.", @show).".'.'";
@@ -69,8 +67,8 @@ $ms->define_variable(MONTH => 'April');
 my @output;
 
 @output = $ms->list(-variable, -namesonly);
-is_deeply \@output, ["%DEFINE_VARIABLE MONTH", 
-					 "%DEFINE_VARIABLE YEAR"];
+is_deeply \@output, ["%DEFINE_VARIABLE MONTH\n", 
+					 "%DEFINE_VARIABLE YEAR\n"];
 
 @output = $ms->list(-variable);
 is_deeply \@output, ["%DEFINE_VARIABLE MONTH [April]\n", 
@@ -83,14 +81,14 @@ is $err, "";
 is_deeply \@res, [];
 
 ($out,$err,@res) = capture { void { $ms->list(-variable); } };
-eq_or_diff $out, "%DEFINE_VARIABLE MONTH [April]\n\n".
-				 "%DEFINE_VARIABLE YEAR [2015]\n\n";
+eq_or_diff $out, "%DEFINE_VARIABLE MONTH [April]\n".
+				 "%DEFINE_VARIABLE YEAR [2015]\n";
 is $err, "";
 is_deeply \@res, [];
 
 @output = $ms->list_variable(-namesonly);
-is_deeply \@output, ["%DEFINE_VARIABLE MONTH", 
-					 "%DEFINE_VARIABLE YEAR"];
+is_deeply \@output, ["%DEFINE_VARIABLE MONTH\n", 
+					 "%DEFINE_VARIABLE YEAR\n"];
 
 @output = $ms->list_variable();
 is_deeply \@output, ["%DEFINE_VARIABLE MONTH [April]\n", 
@@ -103,8 +101,8 @@ is $err, "";
 is_deeply \@res, [];
 
 ($out,$err,@res) = capture { void { $ms->list_variable(); } };
-eq_or_diff $out, "%DEFINE_VARIABLE MONTH [April]\n\n".
-				 "%DEFINE_VARIABLE YEAR [2015]\n\n";
+eq_or_diff $out, "%DEFINE_VARIABLE MONTH [April]\n".
+				 "%DEFINE_VARIABLE YEAR [2015]\n";
 is $err, "";
 is_deeply \@res, [];
 

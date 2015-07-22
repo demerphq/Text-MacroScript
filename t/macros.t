@@ -6,6 +6,7 @@
 use strict;
 use warnings;
 use Capture::Tiny 'capture';
+use Test::Differences;
 use Test::More;
 
 my $ms;
@@ -50,17 +51,13 @@ diag 'Issue #1: expansion depends on size of macro name';
 # undefine
 is $ms->expand("N1N2N3"), 			"252627";
 
-diag 'Issue #4: undefine_all() should carp if no option is given';
-# $ms->undefine();
-
 $ms->undefine(-macro => "N1");
 $ms->undefine_macro("N2");
 is $ms->expand('%UNDEFINE N3'), "";
 
 is $ms->expand("N1N2N3"), 			"N1N2N3";
 
-diag 'Issue #2: expand() does not accept a multi-line text';
-#is $ms->expand("%DEFINE N [nn]\nNN\n%UNDEFINE N\nNN\n"), "nnnn\nNN\n";
+is $ms->expand("%DEFINE N [nn]\nNN\n%UNDEFINE N\nNN\n"), "nnnn\nNN\n";
 
 
 #------------------------------------------------------------------------------
@@ -73,8 +70,8 @@ $ms = new_ok('Text::MacroScript' => [
 my @output;
 
 @output = $ms->list(-macro, -namesonly);
-is_deeply \@output, ["%DEFINE N1", 
-					 "%DEFINE N2"];
+is_deeply \@output, ["%DEFINE N1\n", 
+					 "%DEFINE N2\n"];
 
 @output = $ms->list(-macro);
 is_deeply \@output, ["%DEFINE N1 [1]\n", 
@@ -87,14 +84,14 @@ is $err, "";
 is_deeply \@res, [];
 
 ($out,$err,@res) = capture { void { $ms->list(-macro); } };
-eq_or_diff $out, "%DEFINE N1 [1]\n\n".
-				 "%DEFINE N2 [2]\n\n";
+eq_or_diff $out, "%DEFINE N1 [1]\n".
+				 "%DEFINE N2 [2]\n";
 is $err, "";
 is_deeply \@res, [];
 
 @output = $ms->list_macro(-namesonly);
-is_deeply \@output, ["%DEFINE N1", 
-					 "%DEFINE N2"];
+is_deeply \@output, ["%DEFINE N1\n", 
+					 "%DEFINE N2\n"];
 
 @output = $ms->list_macro();
 is_deeply \@output, ["%DEFINE N1 [1]\n", 
@@ -107,8 +104,8 @@ is $err, "";
 is_deeply \@res, [];
 
 ($out,$err,@res) = capture { void { $ms->list_macro(); } };
-eq_or_diff $out, "%DEFINE N1 [1]\n\n".
-				 "%DEFINE N2 [2]\n\n";
+eq_or_diff $out, "%DEFINE N1 [1]\n".
+				 "%DEFINE N2 [2]\n";
 is $err, "";
 is_deeply \@res, [];
 
@@ -152,7 +149,7 @@ $ms = new_ok('Text::MacroScript' => [
 					[ "hello"	=> "Hallo" ],
 				]]);
 is $ms->expand("hello ZZZZZ1 ZZZZZ2\n"),"Hallo hel lo\n";
-is $ms->expand("ZZZZZ1ZZZZZ2\n"),		"Hallo\n";
+is $ms->expand("ZZZZZ1ZZZZZ2\n"),		"hello\n";
 
 #------------------------------------------------------------------------------
 # macros with regexp-special-chars
@@ -163,10 +160,9 @@ is $ms->expand("2*4\n"),			"2star4\n";
 #------------------------------------------------------------------------------
 # macros with arguments
 $ms = new_ok('Text::MacroScript');
-diag 'Issue #3: Cannot catch error "missing parameter or unescaped # in MACRO"';
-#is $ms->expand("%DEFINE * [#0+#1+#2+#3+#4+#5+#6+#7+#8+#9+#10]\n"),	"";
-#eval {$ms->expand("*\n")};
-#like $@, qr/missing or unescaped \# in MACRO/;
+is $ms->expand("%DEFINE * [#0+#1+#2+#3+#4+#5+#6+#7+#8+#9+#10]\n"),	"";
+eval {$ms->expand("*\n")};
+is $@, "Error at file - line 1: Missing parameters\n";
 is $ms->expand("%DEFINE * [#0+#1]\n"),	"";
 is $ms->expand("*[0|1]\n"),				"0+1\n";
 is $ms->expand("*[ 0 | 1 ]\n"),			" 0 + 1 \n";
@@ -187,18 +183,16 @@ is $ms->expand("*[a|b|c]\n"),			"line 1: a\nline 2: b\nline 3: c\n\n";
 
 #------------------------------------------------------------------------------
 # expand variables in all input text
-diag 'Issue #37: Variables should be expanded in all input text, not only in macro scripts';
 $ms = new_ok('Text::MacroScript');
 $ms->define_variable(YEAR => 2015);
-#is $ms->expand('\\#YEAR = #YEAR'), "#YEAR = 2015";
+is $ms->expand('\\#YEAR = #YEAR'), "#YEAR = 2015";
 
 
 #------------------------------------------------------------------------------
 # expand variables in macros
-diag 'Issue #37: Variables should be expanded in all input text, not only in macro scripts';
 $ms = new_ok('Text::MacroScript');
 $ms->define_variable(YEAR => 2015);
 $ms->define_macro(SHOW => '\\#YEAR = #YEAR');
-#is $ms->expand("SHOW"), "#YEAR = 2015";
+is $ms->expand("SHOW"), "#YEAR = 2015";
 
 done_testing;

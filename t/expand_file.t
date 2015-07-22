@@ -19,27 +19,22 @@ sub void(&) { $_[0]->(); () }
 my $ms;
 my $fh;
 my($out,$err,@res);
-my $file = "testmacroscript.tmp~";
+my $file = "test~";
 
 #------------------------------------------------------------------------------
 # create object
 $ms = new_ok('Text::MacroScript');
 
 #------------------------------------------------------------------------------
-# error messages: unclosed %DEFINE
-t_spew($file, "\n\n%DEFINE xx\nyy\nzz\n");
-$ms = new_ok('Text::MacroScript');
-eval { @res = $ms->expand_file($file); };
-check_error(__LINE__-1, $@, "Runaway %DEFINE from $file line 3 to end of file __LOC__.\n");
-path($file)->remove;
-
-#------------------------------------------------------------------------------
-# error messages: unclosed %DEFINE_SCRIPT
-t_spew($file, "\n\n%DEFINE_SCRIPT xx\nyy\nzz\n");
-$ms = new_ok('Text::MacroScript');
-eval { @res = $ms->expand_file($file); };
-check_error(__LINE__-1, $@, "Runaway %DEFINE_SCRIPT from $file line 3 to end of file __LOC__.\n");
-path($file)->remove;
+# error messages: unclosed %DEFINE, %DEFINE_SCRIPT
+for my $define (qw( DEFINE DEFINE_SCRIPT )) {
+	t_spew($file, "\n\n%$define xx\nyy\nzz\n");
+	$ms = new_ok('Text::MacroScript');
+	@res = $ms->expand_file($file);
+	eval { $ms->DESTROY };
+	is $@, "Error at file $file line 3: Unbalanced open structure at end of file\n";
+	path($file)->remove;
+}
 
 #------------------------------------------------------------------------------
 # error messages: %CASE inside %DEFINE...
@@ -47,8 +42,9 @@ for my $define (qw( DEFINE DEFINE_SCRIPT )) {
 	for my $case ('CASE[0]', 'CASE[1]', 'END_CASE') {
 		t_spew($file, "\n\n%$define xx\nyy\nzz\n%$case");
 		$ms = new_ok('Text::MacroScript');
-		eval { @res = $ms->expand_file($file); };
-		check_error(__LINE__-1, $@, "Runaway %$define from $file line 3 to line 6 __LOC__.\n");
+		@res = $ms->expand_file($file);
+		eval { $ms->DESTROY };
+		is $@, "Error at file $file line 3: Unbalanced open structure at end of file\n";
 		path($file)->remove;
 	}
 }
@@ -58,108 +54,60 @@ for my $define (qw( DEFINE DEFINE_SCRIPT )) {
 t_spew($file, "\n\n%CASE 1\nyy\nzz\n");
 $ms = new_ok('Text::MacroScript');
 eval { @res = $ms->expand_file($file); };
-check_error(__LINE__-1, $@, "Missing \%CASE condition at $file line 3 __LOC__.\n");
+is $@, "Error at file $file line 3: Expected [EXPR]\n";
 path($file)->remove;
 
 #------------------------------------------------------------------------------
 # error messages: %CASE eval failed
 diag 'Issue #46: Syntax error in %CASE expression is not caught'; 
-#t_spew($file, "\n\n%CASE[1+]\nyy\nzz\n");
-#$ms = new_ok('Text::MacroScript');
-#eval { @res = $ms->expand_file($file); };
-#check_error(__LINE__-1, $@, "Evaluation of %CASE [1+] failed at $file line 3 __LOC__.\n");
-#path($file)->remove;
+t_spew($file, "\n\n%CASE[1+]\nyy\nzz\n");
+$ms = new_ok('Text::MacroScript');
+eval { @res = $ms->expand_file($file); };
+is $@, "Error at file $file line 3: Eval error: syntax error\n";
+path($file)->remove;
 
-#------------------------------------------------------------------------------
-# error messages: %??? inside %DEFINE
-for my $define (qw( DEFINE DEFINE_SCRIPT )) {
-	for my $stmt (qw( UNDEFINE UNDEFINE_ALL
-					  UNDEFINE_SCRIPT UNDEFINE_ALL_SCRIPT 
-					  UNDEFINE_VARIABLE UNDEFINE_ALL_VARIABLE
-					  DEFINE DEFINE_SCRIPT DEFINE_VARIABLE
-					  LOAD INCLUDE 
-					  CASE END_CASE )) {
-		t_spew($file, "\n\n%$define xx\nyy\nzz\n%$stmt");
-		$ms = new_ok('Text::MacroScript');
-		eval { @res = $ms->expand_file($file); };
-		check_error(__LINE__-1, $@, "Runaway %$define from $file line 3 to line 6 __LOC__.\n");
-		path($file)->remove;
-	}
-}
 
 #------------------------------------------------------------------------------
 # error messages: evaluation error within script
-diag "Issue #47 eval error when evaluating a SCRIPT is not caught and Perl error message is output";
-#t_spew($file, <<'END');
-#%DEFINE_SCRIPT xx ["]
-#xx
-#END
-#$ms = new_ok('Text::MacroScript');
-#eval { @res = $ms->expand_file($file); };
-#check_error(__LINE__-1, $@, "Evaluation of SCRIPT xx failed at $file line 2 __LOC__.\n");
-#path($file)->remove;
+t_spew($file, norm_nl(<<'END'));
+%DEFINE_SCRIPT xx [+]
+xx
+END
+$ms = new_ok('Text::MacroScript');
+eval { @res = $ms->expand_file($file); };
+is $@, "Error at file test~ line 2: Eval error: syntax error\n";
+path($file)->remove;
 
 #------------------------------------------------------------------------------
 # error messages: undefine non-existent item
-t_spew($file, <<'END');
+t_spew($file, norm_nl(<<'END'));
 %UNDEFINE          x1
 %UNDEFINE_SCRIPT   x2
 %UNDEFINE_VARIABLE x3
 END
 $ms = new_ok('Text::MacroScript');
-t_capture(__LINE__, sub { void { $ms->expand_file($file) } }, "", <<ERR, 0 );
-Cannot undefine non-existent MACRO x1 at $file line 1 __LOC__.
-Cannot undefine non-existent SCRIPT x2 at $file line 2 __LOC__.
-Cannot undefine non-existent VARIABLE x3 at $file line 3 __LOC__.
+t_capture(__LINE__, sub { void { $ms->expand_file($file) } }, "", norm_nl(<<ERR), 0 );
 ERR
 path($file)->remove;
 
 for my $which (qw( macro script variable )) {
 	t_capture(__LINE__, sub { $ms->undefine("-$which", "x1") }, "", 
-			  "Cannot undefine non-existent ".uc($which)." x1 __LOC__.\n",
-			  1 );
+			  "",
+			  0 );
 }
-
-#------------------------------------------------------------------------------
-# error messages: %REQUIRE
-t_spew($file.".1", "1+;\n");
-t_spew($file, "%REQUIRE[$file.1]\n");
-$ms = new_ok('Text::MacroScript');
-t_capture(__LINE__, sub { void { $ms->expand_file($file) } }, "", <<ERR, 0 );
-Failed to require $file.1: syntax error at $file.1 line 1, near "+;"
-Compilation failed in require at blib/lib/Text/MacroScript.pm line 687, <\$fh> line 1.
- __LOC__.
-ERR
-path($file.".1")->remove;
-path($file)->remove;
 
 #------------------------------------------------------------------------------
 # error messages: missing parameter
 t_spew($file, "%DEFINE_SCRIPT xx [\"#0#1\"]\nxx\nxx[a]\nxx[a|b]\n");
 $ms = new_ok('Text::MacroScript');
-t_capture(__LINE__, sub { void { $ms->expand_file($file) } }, <<OUT, <<ERR, 0 );
-#0#1
-a#1
-ab
-OUT
-Missing parameter or unescaped # in SCRIPT xx "#0#1" at $file line 2 __LOC__.
-Missing parameter or unescaped # in SCRIPT xx "a#1" at $file line 3 __LOC__.
-ERR
+eval { $ms->expand_file($file) };
+is $@, "Error at file $file line 2: Missing parameters\n";
 path($file)->remove;
 
-diag 'Issue #49: Missing parameter or unescaped # in MACRO not reported for all missing parameters';
-#Missing parameter or unescaped # in MACRO xx a#1 at $file line 3 __LOC__.
 t_spew($file, "%DEFINE xx [#0#1]\nxx\nxx[a]\nxx[a|b]\n");
 $ms = new_ok('Text::MacroScript');
-t_capture(__LINE__, sub { void { $ms->expand_file($file) } }, <<OUT, <<ERR, 0 );
-#0#1
-a#1
-ab
-OUT
-Missing parameter or unescaped # in MACRO xx #0#1 at $file line 2 __LOC__.
-ERR
+eval { $ms->expand_file($file) };
+is $@, "Error at file $file line 2: Missing parameters\n";
 path($file)->remove;
-
-#------------------------------------------------------------------------------
 
 done_testing;

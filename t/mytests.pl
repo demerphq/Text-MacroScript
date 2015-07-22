@@ -6,6 +6,7 @@
 use strict;
 use warnings;
 use Path::Tiny;
+use Capture::Tiny 'capture';
 use Test::Differences;
 
 # normalize output and expected strings before eq test
@@ -74,6 +75,7 @@ sub t_capture {
 # write out a test file, output it with note for easier test failure detection
 sub t_spew {
 	my($file, @lines) = @_;
+	unlink $file;
 	path($file)->spew(@lines);
 	note "File $file:";
 	note path($file)->lines;

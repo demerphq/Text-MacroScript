@@ -9,6 +9,20 @@ MANIFEST
 META.yml			Module meta-data (added by MakeMaker)
 README
 t/expand_file.t
+t/fix_002.t
+t/fix_003.t
+t/fix_004.t
+t/fix_007.t
+t/fix_027.t
+t/fix_028_037.t
+t/fix_038.t
+t/fix_039.t
+t/fix_040.t
+t/fix_041.t
+t/fix_046.t
+t/fix_048.t
+t/fix_049.t
+t/fix_063.t
 t/macrodir.t
 t/macropp.t
 t/macros.t
@@ -23,11 +37,6 @@ t/new_define_variable.t
 t/new_embedded.t
 t/new_escapes.t
 t/new_expand_file.t
-t/new_fix_2.t
-t/new_fix_28_37.t
-t/new_fix_38.t
-t/new_fix_39.t
-t/new_fix_7.t
 t/new_list_macro.t
 t/new_list_script.t
 t/new_list_variable.t

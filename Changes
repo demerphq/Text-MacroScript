@@ -1,3 +1,37 @@
+2.10_01	2015-07-23
+
+	Bug Fixes
+	* Fix #2: expand() does not accept a multi-line text
+	* Fix #3: Cannot catch error "missing parameter or unescaped # in MACRO"
+	* Fix #4: undefine_all() should carp if no option is given
+	* Fix #7: expansion depends on size of script name
+	* Fix #27: undefine should not carp on undefined object
+	* Fix #28, #37: Variables should be expanded in all input text, not 
+	  only in macro scripts
+	* Fix #38: Variables with # syntax not parsed by $Macro->define()
+	* Fix #39: Undefined #var use causes perl error message without location
+	* Fix #40: Variables should accept expressions and compute them
+	* Fix #41: Macro/script arguments do not nest
+	* Fix #46: Syntax error in %CASE expression is not caught
+	* Fix #48: eval error when evaluating a SCRIPT is not caught and Perl 
+	  error message is output
+	* Fix #49: Missing parameter or unescaped # in MACRO not reported for 
+	  all missing parameters
+	* Fix #63: The body of a script may not contain a literal null
+
+	Feature Changes
+	* Rewrite the parsing loop using one single regular expression to match 
+	  all active macros
+	* Each macro expansion is evaluated once and not looked-in again - 
+	  that means that the output is not rescanned for macros.
+	* list_... output is more consistent - always exactly one newline at 
+	  the end of each definition.
+	* Eval error messages are now correctly captured instead of being sent 
+	  to STDERR.
+	* The error message for non-matched structure is now the same for 
+	  all structures.
+	* Undefining a not-defined entity does no longer output an error message.
+
 2.10	2015-06-11
 
 	Bug Fixes

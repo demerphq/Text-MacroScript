@@ -15,11 +15,11 @@ if ($mm_ver =~ /_/) {
 
 WriteMakefile(
     'NAME'         => 'Text::MacroScript',
-    'VERSION_FROM' => 'MacroScript.pm', # finds $VERSION
+    'VERSION_FROM' => 'lib/Text/MacroScript.pm', # finds $VERSION
     'DISTNAME'     => 'Text-MacroScript',
     ($] >= 5.005 ?
         (
-            ABSTRACT_FROM => 'MacroScript.pm', 
+            ABSTRACT_FROM => 'lib/Text/MacroScript.pm', 
             AUTHOR   => 'Mark Summerfield <summer@perlpress.com>',
         ) : () ),
 	'PREREQ_PM'	   => {
@@ -31,8 +31,8 @@ WriteMakefile(
 		'Object::Tiny::RW'	=> 1.07,
 	},
 	'EXE_FILES'	   => [
-		'macropp',
-		'macrodir',
+		'bin/macropp',
+		'bin/macrodir',
 	],
     'dist'         => { COMPRESS => "gzip -9", SUFFIX => "gz" },
 

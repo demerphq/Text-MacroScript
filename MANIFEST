@@ -1,9 +1,9 @@
+bin/macrodir
+bin/macropp
 Changes
 examples/html.macro
 examples/macroutil.pl
-macrodir
-macropp
-MacroScript.pm
+lib/Text/MacroScript.pm
 Makefile.PL
 MANIFEST
 META.yml			Module meta-data (added by MakeMaker)

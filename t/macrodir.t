@@ -15,7 +15,7 @@ use Test::More;
 use_ok 'Text::MacroScript';
 require_ok 't/mytests.pl';
 
-my $MACRODIR  = "$^X -I../../blib/lib ../../macrodir";
+my $MACRODIR  = "$^X -I../../blib/lib ../../bin/macrodir";
 my @PRONOUNS  = ("my", "your", "his", "her");
 my @DATA_DIRS = (undef,undef,  "2",   "2");
 my $TARGET = "../target";

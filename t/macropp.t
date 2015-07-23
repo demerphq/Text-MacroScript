@@ -15,7 +15,7 @@ my($cmd,$out,$err,$res,$test1,$test2);
 use_ok 'Text::MacroScript';
 require_ok 't/mytests.pl';
 
-my $macropp = "$^X -Iblib/lib macropp";
+my $macropp = "$^X -Iblib/lib bin/macropp";
 
 my $macros = "test_macros~";
 path($macros)->spew(norm_nl(<<END));

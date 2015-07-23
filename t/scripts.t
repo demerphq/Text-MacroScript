@@ -32,8 +32,7 @@ $ms->define(-script => "ADD1" => "#0+1");
 $ms->define_script("ADD2", "#0+2");
 is $ms->expand('%DEFINE_SCRIPT ADD3[#0+3]'), "";
 
-diag 'Issue #41: Macro/script arguments do not nest';
-#is $ms->expand("ADD[ADD1[ADD2[ADD3[4]]] | 10])"), "20";
+is $ms->expand("ADD[ADD1[ADD2[ADD3[4]]] | 10]"), "20";
 
 is $ms->expand("ADD[1|2] ADD1[3] ADD2[4] ADD3[5]"), "3 4 6 8";
 

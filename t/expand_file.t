@@ -50,24 +50,6 @@ for my $define (qw( DEFINE DEFINE_SCRIPT )) {
 }
 
 #------------------------------------------------------------------------------
-# error messages: no %CASE argument
-t_spew($file, "\n\n%CASE 1\nyy\nzz\n");
-$ms = new_ok('Text::MacroScript');
-eval { @res = $ms->expand_file($file); };
-is $@, "Error at file $file line 3: Expected [EXPR]\n";
-path($file)->remove;
-
-#------------------------------------------------------------------------------
-# error messages: %CASE eval failed
-diag 'Issue #46: Syntax error in %CASE expression is not caught'; 
-t_spew($file, "\n\n%CASE[1+]\nyy\nzz\n");
-$ms = new_ok('Text::MacroScript');
-eval { @res = $ms->expand_file($file); };
-is $@, "Error at file $file line 3: Eval error: syntax error\n";
-path($file)->remove;
-
-
-#------------------------------------------------------------------------------
 # error messages: evaluation error within script
 t_spew($file, norm_nl(<<'END'));
 %DEFINE_SCRIPT xx [+]

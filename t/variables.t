@@ -139,25 +139,24 @@ is $ms->expand("SHOW"),
 
 #------------------------------------------------------------------------------
 # compute
-diag 'Issue #40: Variables should accept expressions and compute them';
-#for (1..5) {
-#	$ms->define_variable("N$_", ($_*2)."/2");
-#}
-#is $ms->expand("SHOW"), 
-#			   "N1=1=1, N2=2=2, N3=3=3, N4=4=4, N5=5=5.";
-#
-#for (1..5) {
-#	is $ms->expand("%DEFINE_VARIABLE N$_ [".($_*2)."/2]"), "";
-#}
-#is $ms->expand("SHOW"), 
-#			   "N1=1=1, N2=2=2, N3=3=3, N4=4=4, N5=5=5.";
-#
-#$ms->define_variable("N1", "#N1+1");
-#is $ms->expand("SHOW"), 
-#			   "N1=2=2, N2=2=2, N3=3=3, N4=4=4, N5=5=5.";
-#
-#is $ms->expand("%DEFINE_VARIABLE N1 [#N1+1]"), "";
-#is $ms->expand("SHOW"), 
-#			   "N1=3=3, N2=2=2, N3=3=3, N4=4=4, N5=5=5.";
+for (1..5) {
+	$ms->define_variable("N$_", ($_*2)."/2");
+}
+is $ms->expand("SHOW"), 
+			   "N1=1=1, N2=2=2, N3=3=3, N4=4=4, N5=5=5.";
+
+for (1..5) {
+	is $ms->expand("%DEFINE_VARIABLE N$_ [".($_*2)."/2]"), "";
+}
+is $ms->expand("SHOW"), 
+			   "N1=1=1, N2=2=2, N3=3=3, N4=4=4, N5=5=5.";
+
+$ms->define_variable("N1", "#N1+1");
+is $ms->expand("SHOW"), 
+			   "N1=2=2, N2=2=2, N3=3=3, N4=4=4, N5=5=5.";
+
+is $ms->expand("%DEFINE_VARIABLE N1 [#N1+1]"), "";
+is $ms->expand("SHOW"), 
+			   "N1=3=3, N2=2=2, N3=3=3, N4=4=4, N5=5=5.";
 			   
 done_testing;

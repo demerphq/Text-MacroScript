@@ -463,7 +463,7 @@ sub _match_case {
 							if ($case_arg) {
 								my $body = $args[0];
 								$body =~ s/^\s+//;		# eat newline
-								$$rt_output_ref .= $self->expand($body);
+								$$rt_output_ref .= $self->_expand($body);
 							}
 						},
 						qr/     ^ $WS_RE* \% END_CASE \s* |

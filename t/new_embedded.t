@@ -6,7 +6,6 @@
 use strict;
 use warnings;
 use Test::More;
-use Data::Dump 'dump';
 
 my $ms;
 my($out,$err,@res);

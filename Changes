@@ -1,3 +1,13 @@
+2.10_02	2015-07-25
+
+	Bug Fixes
+	* Move "use re 'eval'" to global scope to try to overcome error message
+	* Remove dependency on Data::Dump - not used
+	* Fix typo
+
+	Feature Changes
+	* Move files to standard distribution directories
+
 2.10_01	2015-07-23
 
 	Bug Fixes

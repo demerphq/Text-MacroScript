@@ -12,7 +12,7 @@ use re 'eval';
 
 
 use vars qw( $VERSION $WS_RE $NAME_RE $COMMENT );
-$VERSION 	= '2.10_01'; 
+$VERSION 	= '2.10_02'; 
 
 BEGIN {
 	$WS_RE 		= qr/ [\t\f\r ] /x;

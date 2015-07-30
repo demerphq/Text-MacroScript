@@ -8,8 +8,6 @@ use warnings;
 use Carp qw( carp croak );
 our @CARP_NOT = ( __PACKAGE__ );
 use Path::Tiny;
-use re 'eval';
-
 
 use vars qw( $VERSION $WS_RE $NAME_RE $COMMENT );
 $VERSION 	= '2.10_02'; 
@@ -237,6 +235,8 @@ sub _update_regexp {
 	my($self) = @_;
 	my @actions_re;
 	
+	use re 'eval';
+
 	# escape chars
 	push @actions_re, qr/ (?> \\ ( [\#\%] ) 	(?{ \&_match_escape }) ) /mx;
 	
@@ -661,6 +661,8 @@ sub _parse_execute {
 # parse functions: collect macro arguments
 sub _parse_args {
 	my($self, $output_ref, $input) = @_;
+	
+	use re 'eval';
 	
 	my $context = $self->_last_context_assert(CTX_ARGS);
 	while ( $context->open_parens > 0 && $input ne '' ) {

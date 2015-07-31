@@ -1,8 +1,18 @@
+2.10_03	2015-07-31
+
+	Bug Fixes
+	* Reduce usage of variables in regexp that use (?{...}) to avoid perl errors
+	  (issue #64)
+	* Revert "Move "use re 'eval'" to global scope to try to overcome error message"
+	  (issue #64)
+
 2.10_02	2015-07-25
 
 	Bug Fixes
 	* Move "use re 'eval'" to global scope to try to overcome error message
+	  (issue #64)
 	* Remove dependency on Data::Dump - not used
+	  (issue #64)
 	* Fix typo
 
 	Feature Changes

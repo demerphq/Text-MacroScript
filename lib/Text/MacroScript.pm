@@ -9,11 +9,10 @@ use Carp qw( carp croak );
 our @CARP_NOT = ( __PACKAGE__ );
 use Path::Tiny;
 
-use vars qw( $VERSION $WS_RE $NAME_RE $COMMENT );
+use vars qw( $VERSION $NAME_RE $COMMENT );
 $VERSION 	= '2.10_02'; 
 
 BEGIN {
-	$WS_RE 		= qr/ [\t\f\r ] /x;
 	$NAME_RE 	= qr/ [^\s\[\|\]\#]+ /x;		# name cannot contain blanks [ | ] #
 	$COMMENT	= "%%";							# comment macro
 };
@@ -233,84 +232,79 @@ DESTROY {
 # create the parsing regexp
 sub _update_regexp {
 	my($self) = @_;
-	my @actions_re;
 	
 	use re 'eval';
 
+	my $regexp = '(?';
+	
 	# escape chars
-	push @actions_re, qr/ (?> \\ ( [\#\%] ) 	(?{ \&_match_escape }) ) /mx;
+	$regexp .= '|'.qr/ (?> \\ ( [\#\%] ) 		(?{ \&_match_escape }) ) /mx;
 	
 	# escape newline
-	push @actions_re, qr/ (?> \\ \n				(?{ \&_match_escape_newline }) ) /mx;
+	$regexp .= '|'.qr/ (?> \\ \n				(?{ \&_match_escape_newline }) ) /mx;
 	
 	# %DEFINE_VARIABLE
-	push @actions_re, qr/ (?> ^ $WS_RE* \% DEFINE_VARIABLE
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% DEFINE_VARIABLE
 												(?{ \&_match_define_variable }) ) /mx;
 
 	# %UNDEFINE_ALL_VARIABLE
-	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_ALL_VARIABLE \s*
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% UNDEFINE_ALL_VARIABLE \s*
 												(?{ \&_match_undefine_all_variable }) ) /mx;
 
 	# %UNDEFINE_VARIABLE
-	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_VARIABLE
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% UNDEFINE_VARIABLE
 												(?{ \&_match_undefine_variable }) ) /mx;
 
 	# %DEFINE_SCRIPT
-	push @actions_re, qr/ (?> ^ $WS_RE* \% DEFINE_SCRIPT
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% DEFINE_SCRIPT
 												(?{ \&_match_define_script }) ) /mx;
 	
 	# %UNDEFINE_ALL_SCRIPT
-	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_ALL_SCRIPT \s*
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% UNDEFINE_ALL_SCRIPT \s*
 												(?{ \&_match_undefine_all_script }) ) /mx;
 
 	# %UNDEFINE_SCRIPT
-	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_SCRIPT
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% UNDEFINE_SCRIPT
 												(?{ \&_match_undefine_macro_script }) ) /mx;
 
 	# %DEFINE
-	push @actions_re, qr/ (?> ^ $WS_RE* \% DEFINE
-												(?{ \&_match_define_macro }) ) /mx;
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% DEFINE	(?{ \&_match_define_macro }) ) /mx;
 	
 	# %UNDEFINE_ALL
-	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE_ALL \s*
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% UNDEFINE_ALL \s*
 												(?{ \&_match_undefine_all_macro }) ) /mx;
 
 	# %UNDEFINE
-	push @actions_re, qr/ (?> ^ $WS_RE* \% UNDEFINE
-												(?{ \&_match_undefine_macro_script }) ) /mx;
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% UNDEFINE	(?{ \&_match_undefine_macro_script }) ) /mx;
 
 	# %CASE
-	push @actions_re, qr/ (?> ^ $WS_RE* \% CASE
-												(?{ \&_match_case }) ) /mx;
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% CASE		(?{ \&_match_case }) ) /mx;
 
 	# %LOAD
-	push @actions_re, qr/ (?> ^ $WS_RE* \% LOAD
-												(?{ \&_match_load }) ) /mx;
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% LOAD		(?{ \&_match_load }) ) /mx;
 
 	# %INCLUDE
-	push @actions_re, qr/ (?> ^ $WS_RE* \% INCLUDE
-												(?{ \&_match_include }) ) /mx;
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% INCLUDE	(?{ \&_match_include }) ) /mx;
 
 	# %REQUIRE
-	push @actions_re, qr/ (?> ^ $WS_RE* \% REQUIRE
-												(?{ \&_match_require }) ) /mx;
+	$regexp .= '|'.qr/ (?> ^ [\t ]* \% REQUIRE	(?{ \&_match_require }) ) /mx;
 
 	# concatenate operator
-	push @actions_re, qr/ (?> $WS_RE* \# \# $WS_RE*
-												(?{ \&_match_concat }) ) /mx;
+	$regexp .= '|'.qr/ (?> [\t ]* \# \# [\t ]*	(?{ \&_match_concat }) ) /mx;
 	
 	# arguments to scripts
-	push @actions_re, qr/ (?> \# ( \d+ )		(?{ \&_match_expand_arg }) ) /mx;
+	$regexp .= '|'.qr/ (?> \# ( \d+ )			(?{ \&_match_expand_arg }) ) /mx;
 	
 	
 	# user actions reverse sorted by length, so that longest match is found
 	my $actions = $self->actions;
 	for my $key (sort {length $b <=> length $a} keys %$actions)  {
-		push @actions_re, qr{ (?> \Q$key\E (?{ \&_match_action }) ) }mx;
+		$regexp .= '|'.qr/ (?> \Q$key\E 		(?{ \&_match_action }) ) /mx;
 	}
 	
-	my $regexps = join(' | ', @actions_re);
-	my $regexp = qr/ (?| $regexps )/mx;
+	$regexp .= ')';
+
+	$regexp = qr/$regexp/;
 	
 	$self->regexp($regexp);
 }
@@ -338,7 +332,7 @@ sub _match_concat {
 sub _match_define_variable {
 	my($self, $output_ref, $match, $input) = @_;
 	
-	$input =~ / $WS_RE* ( $NAME_RE ) $WS_RE* \[ /x 
+	$input =~ / [\t ]* ( $NAME_RE ) [\t ]* \[ /x 
 		or $self->_error("Expected NAME [EXPR]");
 	my $name = $1;
 	$input = $';
@@ -362,7 +356,7 @@ sub _match_define_variable {
 sub _match_undefine {
 	my($self, $input_ref) = @_;
 	
-	$$input_ref =~ / $WS_RE* ( $NAME_RE ) \s* /x 
+	$$input_ref =~ / [\t ]* ( $NAME_RE ) \s* /x 
 		or $self->_error("Expected NAME");
 	my $name = $1;
 	$$input_ref = $';
@@ -391,7 +385,7 @@ sub _match_define_macro_script {
 	my($self, $output_ref, $match, $input, $is_script) = @_;
 	
 	# collect name
-	$input =~ / $WS_RE* ( $NAME_RE ) $WS_RE* /x 
+	$input =~ / [\t ]* ( $NAME_RE ) [\t ]* /x 
 		or $self->_error("Expected NAME");
 	my $name = $1;
 	$input = $';
@@ -422,7 +416,7 @@ sub _match_define_macro_script {
 					my($rt_output_ref, $text) = @_;
 					$self->_define_macro_script($name, $text, $is_script);
 				},
-				qr/ ^ $WS_RE* \% END_DEFINE \s* /mx,
+				qr/ ^ [\t ]* \% END_DEFINE \s* /mx,
 				0);
 		
 		# change parser
@@ -440,7 +434,7 @@ sub _match_define_macro {
 sub _match_case {
 	my($self, $output_ref, $match, $input) = @_;
 	
-	$input =~ / $WS_RE* \[ /x 
+	$input =~ / [\t ]* \[ /x 
 		or $self->_error("Expected [EXPR]");
 	$input = $';
 	
@@ -466,8 +460,8 @@ sub _match_case {
 								$$rt_output_ref .= $self->_expand($body);
 							}
 						},
-						qr/     ^ $WS_RE* \% END_CASE \s* |
-						    (?= ^ $WS_RE* \% CASE ) /mx,
+						qr/     ^ [\t ]* \% END_CASE \s* |
+						    (?= ^ [\t ]* \% CASE ) /mx,
 						0);
 							
 				$self->parse_func( \&_parse_collect_text );
@@ -484,7 +478,7 @@ sub _match_case {
 sub _match_filename {
 	my($self, $input, $func) = @_;
 	
-	$input =~ / $WS_RE* \[ /x 
+	$input =~ / [\t ]* \[ /x 
 		or $self->_error("Expected [FILENAME]");
 	$input = $';
 	
@@ -661,8 +655,6 @@ sub _parse_execute {
 # parse functions: collect macro arguments
 sub _parse_args {
 	my($self, $output_ref, $input) = @_;
-	
-	use re 'eval';
 	
 	my $context = $self->_last_context_assert(CTX_ARGS);
 	while ( $context->open_parens > 0 && $input ne '' ) {

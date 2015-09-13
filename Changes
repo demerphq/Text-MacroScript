@@ -1,26 +1,15 @@
-2.10_03	2015-07-31
+2.11	2015-09-13
 
 	Bug Fixes
 	* Reduce usage of variables in regexp that use (?{...}) to avoid perl errors
 	  (issue #64)
 	* Revert "Move "use re 'eval'" to global scope to try to overcome error message"
 	  (issue #64)
-
-2.10_02	2015-07-25
-
-	Bug Fixes
 	* Move "use re 'eval'" to global scope to try to overcome error message
 	  (issue #64)
 	* Remove dependency on Data::Dump - not used
 	  (issue #64)
 	* Fix typo
-
-	Feature Changes
-	* Move files to standard distribution directories
-
-2.10_01	2015-07-23
-
-	Bug Fixes
 	* Fix #2: expand() does not accept a multi-line text
 	* Fix #3: Cannot catch error "missing parameter or unescaped # in MACRO"
 	* Fix #4: undefine_all() should carp if no option is given
@@ -40,6 +29,7 @@
 	* Fix #63: The body of a script may not contain a literal null
 
 	Feature Changes
+	* Move files to standard distribution directories
 	* Rewrite the parsing loop using one single regular expression to match 
 	  all active macros
 	* Each macro expansion is evaluated once and not looked-in again - 

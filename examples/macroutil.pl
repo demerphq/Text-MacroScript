@@ -9,7 +9,7 @@ use strict;
 use warnings;
 
 use vars qw( $VERSION ) ;
-$VERSION = '2.10_03'; 
+$VERSION = '2.11'; 
 
 use Path::Tiny;
 use Image::Size 'html_imgsize' ;

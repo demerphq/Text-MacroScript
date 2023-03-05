@@ -785,6 +785,7 @@ sub _eval_expression {
 		elsif (! $ignore_errors) {
 			my $error = $@;
 			$error =~ s/ at \(eval.*//;
+                        $error =~ s/^Execution of .* aborted due to compilation errors.\n//m;
 			$self->_error("Eval error: $error");
 		}
 	}

@@ -223,7 +223,7 @@ DESTROY {
 	my($self) = @_;
 	if (@{$self->context}) {
 		my $context = $self->_last_context;
-		$self->line_nr( $context->start_line_nr );
+		$self->line_nr( $context ? $context->start_line_nr : "unknown" );
 		$self->_error("Unbalanced open structure at end of file");
 	}
 }
